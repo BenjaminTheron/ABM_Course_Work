@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import datetime
-from order import Order
+from orderbook import OrderBook, Order
 
 # TODO: What is the effect of traders being able to select multiple market places?
 class MarketPlace:
@@ -9,67 +9,62 @@ class MarketPlace:
   Outlines the class for the marketplace to be used by the traders and auctioneer(s).
   """
 
-  def __init__(self):
-    # init order to initialise the order book
-    init_order = [[-1, -1, "bid", 0, 0, str(datetime.datetime.now())]]
-    # The data to be stored with each order on the LOB
-    self.cols = ['traderID', 'orderID', 'orderType', 'price', 'quantity', 'time']
+  def __init__(self, auctioneer):
+    self.order_book = OrderBook()
+    self.auctioneer = auctioneer
+    self.traders = {}
 
-    self.limit_order_book = pd.DataFrame(init_order, columns=self.cols)
+  def register_trader(self, trader):
+    self.traders[trader.trader_id] = trader
 
-  def Add_Order(self, order):
-    """
-    Given an order object that has been validated (can be added to the LOB),
-    it appends the order to the LOB.
-    """
-    # Update the time of the order
-    order.Set_Time(datetime.datetime.now())
+  def add_order(self, order):
+    return self.auctioneer.shout_accepting_policy(order, self.order_book)
     
-    # Converts an order object into an DataFrame friendly array
-    new_order = [[order.trader_id, order.order_id, order.order_type, order.price,\
-                  order.quantity, str(order.time)]]
+  def match_orders(self, step):
+    trades_executed = self.auctioneer.batch_clearing_policy(self.order_book, step)
+    if trades_executed > 0:
+      self.process_trades()
+    return trades_executed
+    
+  def get_trade_log_df(self):
+    return self.auctioneer.trade_log.to_dataframe()
+    
+  def get_submitted_orders_df(self):
+    return self.auctioneer.submitted_orders_log.to_dataframe()
+  
+  def process_trades(self):
+    unprocessed_trades = self.auctioneer.trade_log.get_unprocessed_trades()
 
-    self.limit_order_book = pd.concat([self.limit_order_book,\
-                                      pd.DataFrame(new_order, columns=self.cols)],
-                                      ignore_index=True)
+    if not unprocessed_trades:
+      return
 
-  def Remove_Order(self, order):
-    """
-    Given an order object that has been matched, expired or deleted, it removes
-    the order from the LOB.
-    """
-    # This function is polymorphic, can remove orders which are provided in array format or
-    # as Order objects
-    if type(order) is Order:
-      # Find the index to remove (by traderID)
-      index_to_remove = np.where(
-          self.limit_order_book['traderID'] == order.trader_id)[0][0]
+    i = 0
+    while i < len(unprocessed_trades):
+      bid_record = unprocessed_trades[i]
+      bid_trader_id = bid_record[0]
+      bid_price = bid_record[3]
+      quantity = bid_record[4]
+      transaction_price = bid_record[3]
 
-      # Remove the corresponding row from the dataframe
-      self.limit_order_book = self.limit_order_book.drop(index_to_remove)
-      # Reset the index in the dataframe
-      self.limit_order_book = self.limit_order_book.reset_index(drop=True)
+      ask_record = unprocessed_trades[i+1] if i+1 < len(unprocessed_trades) else None
+      if not ask_record or ask_record[2] != 'ask':
+            i += 1
+            continue
+
+      ask_trader_id = ask_record[0]
+      ask_price = ask_record[3]
+
+      bid_trader = self.traders.get(bid_trader_id)
+      # trader had balance decreased at time of submission. refund the difference after transaction price found
+      if bid_trader:
+        refund = (bid_price - transaction_price) * quantity
+        bid_trader.budget_size += refund
+        bid_trader.stock += quantity
       
-    elif type(order) is list:
-      # Find the index to remove
-      index_to_remove = np.where(
-          self.limit_order_book['traderID'] == order[0][0])[0][0]
+      ask_trader = self.traders.get(ask_trader_id)
+      if ask_trader:
+        ask_trader.budget_size += transaction_price * quantity
+      i += 2
+    
+    self.auctioneer.trade_log.mark_trades_processed()
 
-      # Remove the corresponding row from the dataframe
-      self.limit_order_book = self.limit_order_book.drop(index_to_remove)
-      # Reset the index in the dataframe
-      self.limit_order_book = self.limit_order_book.reset_index(drop=True)
-
-  def Match_Orders(self, order_bid, order_ask, auctioneer):
-    """
-    Given two orders, this function 'matches' them, generating the appropriate
-    trade and updating all the relevant positions
-    """
-    print()
-
-  def Store_Orders(self):
-    """
-    Adds any matched trades to the dataframe the auctioneer uses to store the list
-    of all successfully matched trades.
-    """
-    print()
