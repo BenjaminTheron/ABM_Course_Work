@@ -38,30 +38,9 @@ class Trader:
         # Only update once per step
         if step <= self.last_update_step:
             return
-            
-        # Calculate current market price based on the order book
-        current_market_price = 100  # Default value
-        
-        # Access the order book through the marketplace
-        order_book = marketplace.order_book
-        
-        # If there are orders in the book, calculate a more accurate price
-        if not order_book.is_empty():
-            best_bid = order_book.get_best_bid()
-            best_ask = order_book.get_best_ask()
-            
-            if best_bid and best_ask:
-                # Calculate mid price between best bid and best ask
-                current_market_price = (best_bid.price + best_ask.price) / 2
-            elif best_bid:
-                # Only bids available
-                current_market_price = best_bid.price
-            elif best_ask:
-                # Only asks available
-                current_market_price = best_ask.price
         
         # Add to price history
-        self.price_history.append(current_market_price)
+        self.price_history.append(self.find_market_price(self, marketplace))
         
         # Keep history at the max allowed length
         if len(self.price_history) > self.history_max_length:
@@ -79,30 +58,9 @@ class Trader:
             
         Returns:
             Order: An order object or None if no order is generated
-        """
-        # Calculate current market price based on the order book
-        current_market_price = 100  # Default value
-        
-        # Access the order book through the marketplace
-        order_book = marketplace.order_book
-        
-        # If there are orders in the book, calculate a more accurate price
-        if not order_book.is_empty():
-            best_bid = order_book.get_best_bid()
-            best_ask = order_book.get_best_ask()
-            
-            if best_bid and best_ask:
-                # Calculate mid price between best bid and best ask
-                current_market_price = (best_bid.price + best_ask.price) / 2
-            elif best_bid:
-                # Only bids available
-                current_market_price = best_bid.price
-            elif best_ask:
-                # Only asks available
-                current_market_price = best_ask.price
-        
+        """        
         # Generate an order using the trading strategy
-        order = self.trading_strategy(current_market_price, step)
+        order = self.trading_strategy(self.find_market_price(marketplace), step)
         
         return order
     
@@ -117,28 +75,18 @@ class Trader:
         Returns:
             bool: Whether the order was accepted
         """
-        # check if bid trader has sufficient funds
-        if order.order_type == "bid":
-            if order.price * order.quantity > self.budget_size:
-                return False
-            self.budget_size -= order.price * order.quantity
+        # Checks whether the trader has enough stock/ funds for the order
+        if (order.order_type == "bid" and self.budget_size >= order.price * order.quantity)\
+            or (order.order_type == "ask" and self.stock >= order.quantity):
+            # Submits the order to the market place
+            accepted = marketplace.add_order(order)
 
-        # check if trader has enough stock
-        elif order.order_type == "ask":
-            if order.quantity > self.stock:
-                return False  
-
-            self.stock -= order.quantity
-    
-        # Submit the order to the marketplace
-        accepted = marketplace.add_order(order)
-    
-        # If order was rejected, return the reserved resources
-        if not accepted:
-            if order.order_type == "bid":
-                self.budget_size += order.price * order.quantity
-            elif order.order_type == "ask":
-                self.stock += order.quantity
+            if accepted and order.order_type == "bid":
+                # Subtract funds from trader
+                self.budget_size -= order.price * order.quantity
+            elif accepted and order.order_type == "ask":
+                # Subtract stock from the trader
+                self.stock -= order.quantity
     
         return accepted
     
@@ -156,75 +104,19 @@ class Trader:
         """
         # Different strategies based on trader type
         if self.trader_type == "aggressive":
-            # Aggressive traders place orders with prices further from the current market price
-            if random.random() < 0.55:  # 55% chance to place a bid (buy)
-                # Only place order if we have budget
-                if self.budget_size // current_market_price > 0:
-                    qty = random.randint(1, min(10, int(self.budget_size // current_market_price)))
-                    
-                    # Aggressive buyer is willing to pay up to 5% more
-                    price = current_market_price * (1 + random.uniform(0.01, 0.05))
-                    price = round(price, 2)
-                    
-                    # Check if we can afford this
-                    if qty * price <= self.budget_size:
-                        return Order(
-                            trader_id=self.trader_id,
-                            order_type="bid",
-                            price=price,
-                            quantity=qty,
-                            time = step
-                        )
-            else:
-                # Place ask (sell) order if we have stock to sell
-                if self.stock > 0:
-                    qty = random.randint(1, self.stock)
-                    
-                    # Aggressive seller is willing to accept up to 5% less
-                    price = current_market_price * (1 - random.uniform(0.01, 0.05))
-                    price = round(price, 2)
-                    
-                    return Order(
-                        trader_id=self.trader_id,
-                        order_type="ask",
-                        price=price,
-                        quantity=qty,
-                        time = step
-                    )
+            rand_val = random.random()
+            price = round(current_market_price * (1 + random.uniform(0.01, 0.05)), 2) if rand_val < 0.55 \
+                    else round(current_market_price * (1 - random.uniform(0.01, 0.05)), 2)
+            
+            return self.create_order(current_market_price, step, price, 10, 0.55, rand_val)
         
         elif self.trader_type == "passive":
             # Passive traders place orders with better prices but may not get filled
-            if random.random() < 0.5:  # 50% chance to place a bid
-                if self.budget_size // current_market_price > 0:
-                    qty = random.randint(1, min(5, int(self.budget_size // current_market_price)))
-                    
-                    # Passive buyer wants to pay less than market price
-                    price = current_market_price * (1 - random.uniform(0.01, 0.03))
-                    price = round(price, 2)
-                    
-                    if qty * price <= self.budget_size:
-                        return Order(
-                            trader_id=self.trader_id,
-                            order_type="bid",
-                            price=price,
-                            quantity=qty,
-                            time = step
-                        )
-            else:
-                if self.stock > 0:
-                    qty = random.randint(1, min(5, self.stock))
-                    
-                    # Passive seller wants more than market price
-                    price = current_market_price * (1 + random.uniform(0.01, 0.03))
-                    price = round(price, 2)
-                    
-                    return Order(
-                        trader_id=self.trader_id,
-                        order_type="ask",
-                        price=price,
-                        quantity=qty,
-                        time = step
-                    )
+            rand_val = random.random()
+            price = round(current_market_price * (1 - random.uniform(0.01, 0.03)), 2) if rand_val < 0.5 \
+                    else round(current_market_price * (1 + random.uniform(0.01, 0.03)), 2)
+            
+            return self.create_order(current_market_price, step, price, 5, 0.5, rand_val)
         
         elif self.trader_type == "momentum":
             # Momentum traders follow the market trend
@@ -310,44 +202,11 @@ class Trader:
                         )
         
         elif self.trader_type == "random":
-            # Completely random behavior
-            if random.random() < 0.5:  # 50% chance to place a bid
-                if self.budget_size // current_market_price > 0:
-                    qty = random.randint(1, min(10, int(self.budget_size // current_market_price)))
-                    price = current_market_price * (1 + random.uniform(-0.05, 0.05))
-                    price = round(price, 2)
-                    
-                    if qty * price <= self.budget_size:
-                        return Order(
-                            trader_id=self.trader_id,
-                            order_type="bid",
-                            price=price,
-                            quantity=qty,
-                            time = step
-                        )
-            else:
-                if self.stock > 0:
-                    qty = random.randint(1, self.stock)
-                    price = current_market_price * (1 + random.uniform(-0.05, 0.05))
-                    price = round(price, 2)
-                    
-                    return Order(
-                        trader_id=self.trader_id,
-                        order_type="ask",
-                        price=price,
-                        quantity=qty,
-                        time = step
-                    )
+            price = round(current_market_price * (1 + random.uniform(-0.05, 0.05)), 2)
+            return self.create_order(current_market_price, step, price, 10, 0.5, random.random())
         
         # If no order was generated, return None
         return None
-    
-    def set_trader_memory(self, trade_log):
-        """
-        Updates the dataframe containing all the past trades (successful, total or both)
-        that the trader can view.
-        """
-        pass
     
     def delete_trade(self, marketplace, order_id):
         """
@@ -373,11 +232,59 @@ class Trader:
             return True
         
         return False
+
+    def create_order(self, current_market_price, step, order_price, min_qty, order_chance, rand_val):
+        """
+        Creates and returns an order object, given budget/ stock restrictions and provided limits.
+        """
+        if rand_val < order_chance:
+            if self.budget_size // current_market_price > 0:
+                qty = random.randint(1, min(min_qty, int(self.budget_size // current_market_price)))
+
+                # If there are sufficient funds in the budget
+                if qty * order_price <= self.budget_size:
+                    return Order(trader_id=self.trader_id,
+                                 order_type="bid",
+                                 price=order_price,
+                                 quantity=qty,
+                                 time=step)
+        else:
+            # While the trader has stock
+            if self.stock > 0:
+                return Order(trader_id=self.trader_id,
+                             order_type="ask",
+                             price=order_price,
+                             quantity=random.randint(1, min(min_qty, self.stock)),
+                             time=step)
+        
+        return None
     
-    def unreserve_order(self, order):
-        if order.order_type == "bid":
-            # Return the reserved funds
-            self.budget_size += order.price * order.quantity
-        else:  # "ask"
-            # Return the reserved stock
-            self.stock += order.quantity
+    def find_market_price(self, marketplace):
+        """
+        Finds the current market price of the stock
+
+        Returns:
+            Returns the current price of the stock
+        """
+        # Calculate current market price based on the order book
+        current_market_price = 100  # Default value
+        
+        # Access the order book through the marketplace
+        order_book = marketplace.order_book
+        
+        # If there are orders in the book, calculate a more accurate price
+        if not order_book.is_empty():
+            best_bid = order_book.get_best_bid()
+            best_ask = order_book.get_best_ask()
+            
+            if best_bid and best_ask:
+                # Calculate mid price between best bid and best ask
+                current_market_price = (best_bid.price + best_ask.price) / 2
+            elif best_bid:
+                # Only bids available
+                current_market_price = best_bid.price
+            elif best_ask:
+                # Only asks available
+                current_market_price = best_ask.price
+
+        return current_market_price
