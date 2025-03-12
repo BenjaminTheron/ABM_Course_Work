@@ -58,7 +58,9 @@ class Simulator:
             "aggressive": 20,
             "passive": 20,
             "momentum": 20,
-            "random": 20
+            "random": 20,
+            "fundamental_up": 20,
+            "fundamental_down": 20,
         }
 
         traders = []
@@ -67,7 +69,7 @@ class Simulator:
         # Create traders based on the specified weights
         for trader_type, count in trader_types_weights.items():
             for _ in range(count):
-                trader = Trader(trader_id, trader_type, "full", 10000)
+                trader = Trader(trader_id, trader_type, "full", 10000, 100)
                 traders.append(trader)
                 marketplace.register_trader(trader)
                 trader_id += 1  # Increment ID for each new trader

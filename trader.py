@@ -13,7 +13,7 @@ class Trader:
     Different traders may have access to different trading histories.
     """
 
-    def __init__(self, trader_id, trader_type, memory_type, budget_size):
+    def __init__(self, trader_id, trader_type, memory_type, budget_size, starting_price):
         self.trader_id = trader_id
         self.trader_type = trader_type
         self.memory_type = memory_type
@@ -22,6 +22,7 @@ class Trader:
         self.stock = 10  # Each trader starts with 10 stock
         self.frequency = random.uniform(1, 5)  # How often the trader acts
 
+        self.starting_price = starting_price # required for fundamentalist traders
         # price history tracking for momentum traders
         self.price_history = []
         self.history_max_length = 10
@@ -75,6 +76,7 @@ class Trader:
         Returns:
             bool: Whether the order was accepted
         """
+        accepted = False
         # Checks whether the trader has enough stock/ funds for the order
         if (order.order_type == "bid" and self.budget_size >= order.price * order.quantity)\
             or (order.order_type == "ask" and self.stock >= order.quantity):
@@ -104,6 +106,7 @@ class Trader:
         """
         # Different strategies based on trader type
         if self.trader_type == "aggressive":
+            # Aggressive traders place orders close to the top bid-ask to have their orders instantly filled
             rand_val = random.random()
             price = round(current_market_price * (1 + random.uniform(0.01, 0.05)), 2) if rand_val < 0.55 \
                     else round(current_market_price * (1 - random.uniform(0.01, 0.05)), 2)
@@ -118,6 +121,7 @@ class Trader:
             
             return self.create_order(current_market_price, step, price, 5, 0.5, rand_val)
         
+        #TODO Update momentum
         elif self.trader_type == "momentum":
             # Momentum traders follow the market trend
             # For simplicity, we'll simulate this with random trend
@@ -202,9 +206,47 @@ class Trader:
                         )
         
         elif self.trader_type == "random":
+            # Traders with completely random behaviour
             price = round(current_market_price * (1 + random.uniform(-0.05, 0.05)), 2)
             return self.create_order(current_market_price, step, price, 10, 0.5, random.random())
-        
+
+        elif "fundamental" in self.trader_type:
+            # Fundamentalists believe the stock price is a certain price based on company fundamentals (in this case nothing)
+            value = 20 # The percentage by which the stock is over/under-valued
+            fundamental_price = round((1 + (value/100)) * self.starting_price, 2) if self.trader_type == "fundamental_up" \
+                                else round((1 - (value/100)) * self.starting_price, 2)
+            
+            # Submit bids if the stock is trading below the fundamental price, and submit asks if it's trading above
+            if fundamental_price > current_market_price:
+                if self.budget_size // current_market_price > 0:
+                    trade_ratio = fundamental_price / current_market_price
+                    qty = round(trade_ratio * \
+                                random.randint(1, round((self.budget_size // current_market_price)\
+                                                         / trade_ratio)))
+
+                    # As fundamentalists already believes in over/under-valuation, trade at current market price
+                    return Order(trader_id=self.trader_id,
+                                 order_type="bid",
+                                 price=current_market_price,
+                                 quantity=qty,
+                                 time=step)
+
+            elif fundamental_price < current_market_price:
+                # Submit ask if the trader has sufficient stock
+                if self.stock > 0:
+                    trade_ratio = current_market_price / fundamental_price
+                    qty = round(trade_ratio * random.randint(1, round(self.stock / trade_ratio)))
+                    
+                    # For aforementioned reason, trade at market price
+                    return Order(trader_id=self.trader_id,
+                                 order_type="ask",
+                                 price=current_market_price,
+                                 quantity=qty,
+                                 time=step)
+            # Hold if stock is trading at the believed price
+
+            # The size of the bid/asks are determined by how over/under-valued the stocks are
+
         # If no order was generated, return None
         return None
     
