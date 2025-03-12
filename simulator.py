@@ -53,6 +53,7 @@ class Simulator:
         # Initialize the marketplace with our auctioneer
         marketplace = MarketPlace(auctioneer)
         
+        # Likelihood a trader acts a given way
         trader_types_weights = {
             "aggressive": 20,
             "passive": 20,
