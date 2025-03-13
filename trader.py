@@ -1,5 +1,6 @@
 import random
 import datetime
+import math
 from typing import Optional
 
 # Import the Order class
@@ -25,8 +26,8 @@ class Trader:
         self.starting_price = starting_price # required for fundamentalist traders
         # price history tracking for momentum traders
         self.price_history = []
-        self.history_max_length = 10
-        self.last_update_step = -1
+        self.history_max_length = 25
+        self.last_update_step = math.inf
 
     def update_price_history(self, marketplace, step):
         """
@@ -40,7 +41,7 @@ class Trader:
         if step <= self.last_update_step:
             return
         
-        # Add to price history
+        # Add the current market price to the price history
         self.price_history.append(self.find_market_price(self, marketplace))
         
         # Keep history at the max allowed length
@@ -121,94 +122,51 @@ class Trader:
             
             return self.create_order(current_market_price, step, price, 5, 0.5, rand_val)
         
-        #TODO Update momentum
         elif self.trader_type == "momentum":
-            # Momentum traders follow the market trend
-            # For simplicity, we'll simulate this with random trend
-            if len(self.price_history) >= 2:
-                short_window = min(5, len(self.price_history))
-                short_avg = sum(self.price_history[-short_window:]) / short_window
-                market_trend = 1 if short_avg > long_avg else -1
-                
-                # Calculate trend strength (how much short-term deviates from long-term)
-                trend_strength = abs(short_avg - long_avg) / long_avg
-                
-                # In uptrend, more likely to buy (follow the momentum)
-                if market_trend > 0:
-                    # Probability increases with trend strength (stronger trend = more confident)
-                    buy_probability = 0.6 + (trend_strength * 10) if trend_strength < 0.04 else 0.9
-                    
-                    if random.random() < buy_probability and self.budget_size // current_market_price > 0:
-                        # Buy more aggressively in stronger uptrends
-                        qty = random.randint(1, min(8, int(self.budget_size // current_market_price)))
-                        
-                        # Price premium based on trend strength
-                        premium = random.uniform(0.01, 0.02 + (trend_strength * 10))
-                        price = current_market_price * (1 + premium)
-                        price = round(price, 2)
-                        
-                        if qty * price <= self.budget_size:
-                            return Order(
-                                trader_id=self.trader_id,
-                                order_type="bid",
-                                price=price,
-                                quantity=qty,
-                                time=step
-                            )
-                else:
-                    # In downtrend, more likely to sell
-                    sell_probability = 0.6 + (trend_strength * 10) if trend_strength < 0.04 else 0.9
-                    
-                    if random.random() < sell_probability and self.stock > 0:
-                        # Sell more aggressively in stronger downtrends
-                        qty = random.randint(1, self.stock)
-                        
-                        # Price discount based on trend strength
-                        discount = random.uniform(0.01, 0.02 + (trend_strength * 5))
-                        price = current_market_price * (1 - discount)
-                        price = round(price, 2)
-                        
-                        return Order(
-                            trader_id=self.trader_id,
-                            order_type="ask",
-                            price=price,
-                            quantity=qty,
-                            time=step
-                        )
-            else:
-                # Not enough price history, use random behavior initially
-                if random.random() < 0.5:  # 50% chance to place a bid
-                    if self.budget_size // current_market_price > 0:
-                        qty = random.randint(1, min(5, int(self.budget_size // current_market_price)))
-                        price = current_market_price * (1 + random.uniform(-0.02, 0.02))
-                        price = round(price, 2)
-                        
-                        if qty * price <= self.budget_size:
-                            return Order(
-                                trader_id=self.trader_id,
-                                order_type="bid",
-                                price=price,
-                                quantity=qty,
-                                time=step
-                            )
-                else:
+            # This is a price action momentum trader -> Go long when the close is
+            # at a 25 day high and go short when the close is at a 25 day low
+            # The size of the bids/ asks is weighted by the recent trend strength
+            if len(self.price_history) >= 5:
+                if current_market_price >= max(self.price_history):
+                    # Use the reciprocal of the recent (5 day) trend strength to weight the size of the bid
+                    trend_strength = 1 + self.price_history[-5] / self.price_history[-1]
+                    # Price the bid lower/ at current price if there's an upward trend
+                    price = round(current_market_price * (1 + random.uniform(-0.03, 0)), 2)
+
+                    if self.budget_size // price > 0:
+                        qty = int(min(self.budget_size // price,\
+                                  round(trend_strength *\
+                                        random.randint(1,\
+                                                       max(1, round((self.budget_size / price)\
+                                                                     / trend_strength))))))
+                        # Submit the order
+                        return Order(trader_id=self.trader_id,
+                                    order_type="bid",
+                                    price=price,
+                                    quantity=qty,
+                                    time=step)
+
+                elif current_market_price <= min(self.price_history):
+                    # Use the reciprocal of the recent (5 day) trend strength to weight the size of the bid
+                    trend_strength = 1 + self.price_history[-5] / self.price_history[-1]
+                    # Price the ask higher/ at current price if there's an upward trend
+                    price = round(current_market_price * (1 + random.uniform(0, 0.03)), 2)
+
                     if self.stock > 0:
-                        qty = random.randint(1, min(3, self.stock))
-                        price = current_market_price * (1 + random.uniform(-0.02, 0.02))
-                        price = round(price, 2)
-                        
-                        return Order(
-                            trader_id=self.trader_id,
-                            order_type="ask",
-                            price=price,
-                            quantity=qty,
-                            time=step
-                        )
-        
-        elif self.trader_type == "random":
-            # Traders with completely random behaviour
-            price = round(current_market_price * (1 + random.uniform(-0.05, 0.05)), 2)
-            return self.create_order(current_market_price, step, price, 10, 0.5, random.random())
+                        qty = int(min(self.stock,\
+                                  round(trend_strength *\
+                                        random.randint(1, max(1, round(self.stock / trend_strength))))))
+                        # Submit the order
+                        return Order(trader_id=self.trader_id,
+                                 order_type="ask",
+                                 price=current_market_price,
+                                 quantity=qty,
+                                 time=step)
+                # If not approaching a high or low, hold
+            else:
+                # If there isn't enough price history, act randomly
+                price = round(current_market_price * (1 + random.uniform(-0.02, 0.02)), 2)
+                return self.create_order(current_market_price, step, price, 5, 0.5, random.random())
 
         elif "fundamental" in self.trader_type:
             # Fundamentalists believe the stock price is a certain price based on company fundamentals (in this case nothing)
@@ -220,11 +178,12 @@ class Trader:
             if fundamental_price > current_market_price:
                 if self.budget_size // current_market_price > 0:
                     trade_ratio = fundamental_price / current_market_price
-                    qty = round(trade_ratio * \
-                                random.randint(1, round((self.budget_size // current_market_price)\
-                                                         / trade_ratio)))
-
-                    # As fundamentalists already believes in over/under-valuation, trade at current market price
+                    qty = int(min(self.budget_size//current_market_price,\
+                              round(trade_ratio * random.randint(1, max(1,\
+                                                                        round((self.budget_size\
+                                                                               / current_market_price)\
+                                                                               / trade_ratio))))))
+                    # As fundamentalists already believe in over/under-valuation, trade at current market price
                     return Order(trader_id=self.trader_id,
                                  order_type="bid",
                                  price=current_market_price,
@@ -235,8 +194,9 @@ class Trader:
                 # Submit ask if the trader has sufficient stock
                 if self.stock > 0:
                     trade_ratio = current_market_price / fundamental_price
-                    qty = round(trade_ratio * random.randint(1, round(self.stock / trade_ratio)))
-                    
+                    qty = int(min(self.stock,\
+                              round(trade_ratio *\
+                                    random.randint(1, max(1, round(self.stock / trade_ratio))))))
                     # For aforementioned reason, trade at market price
                     return Order(trader_id=self.trader_id,
                                  order_type="ask",
@@ -244,8 +204,11 @@ class Trader:
                                  quantity=qty,
                                  time=step)
             # Hold if stock is trading at the believed price
-
             # The size of the bid/asks are determined by how over/under-valued the stocks are
+        elif self.trader_type == "random":
+            # Traders with completely random behaviour
+            price = round(current_market_price * (1 + random.uniform(-0.05, 0.05)), 2)
+            return self.create_order(current_market_price, step, price, 10, 0.5, random.random())
 
         # If no order was generated, return None
         return None
