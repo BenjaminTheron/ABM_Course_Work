@@ -155,7 +155,7 @@ class OrderBook:
         """Check if the order book is empty"""
         return len(self.orders_by_id) == 0
     
-    def clean_expired_orders(self, current_time, expiry_seconds: int = 60) -> List[Order]:
+    def clean_expired_orders(self, current_time, step, expiry_seconds: int = 60) -> List[Order]:
         """Remove and return all expired orders"""
         current_time = step
         expired_orders = []

@@ -58,7 +58,9 @@ class Simulator:
             "aggressive": 20,
             "passive": 20,
             "momentum": 20,
-            "random": 20
+            "random": 20,
+            "fundamental_up": 20,
+            "fundamental_down": 20,
         }
 
         traders = []
@@ -67,7 +69,7 @@ class Simulator:
         # Create traders based on the specified weights
         for trader_type, count in trader_types_weights.items():
             for _ in range(count):
-                trader = Trader(trader_id, trader_type, "full", 10000)
+                trader = Trader(trader_id, trader_type, "full", 10000, 100)
                 traders.append(trader)
                 marketplace.register_trader(trader)
                 trader_id += 1  # Increment ID for each new trader
@@ -103,15 +105,14 @@ class Simulator:
                         accepted = trader.submit_shout(order, marketplace)
                         
                         if accepted:
-                            # Update trader's budget if a bid was placed
-                            #if order.order_type == "bid":
-                            #    trader.budget_size -= order.price * order.quantity
-                            
                             # Update last action time
                             last_action_time[trader.trader_id] = step
             
             # Execute market clearing after all traders have had a chance to act
             trades_executed = marketplace.match_orders(step)
+            # Update each trader's price history once all orders for this step have been submitted
+            for trader in traders:
+                trader.update_price_history(marketplace, step)
             
             # Don't need to process traders positions as this is done in the auctioneer object
         
@@ -182,6 +183,8 @@ class Simulator:
                 "trades_executed": trades_per_trader[trader_id]
             }
         
+        # TODO: Capture trader type success to compare against each other
+
         # Calculate market-wide metrics
         total_trades = len(trade_log_df) 
         actual_trades = total_trades // 2 if total_trades > 0 else 0
