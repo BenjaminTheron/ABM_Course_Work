@@ -1,8 +1,18 @@
 from simulator import Simulator
 
 if __name__ == "__main__":
-    simulator = Simulator(iterations=5, num_traders=10)
-    results = simulator.run_simulations()
+    # For this simulation an equal proportion of traders is picked
+    # The weights/ likelihood for a trader to act a given way
+    trader_weights = {
+        "aggressive": 1/6,
+        "passive": 1/6,
+        "momentum": 1/6,
+        "random": 1/6,
+        "fundamental_up": 1/6,
+        "fundamental_down": 1/6,
+    }
+    simulator = Simulator(iterations=10, num_traders=100)
+    results = simulator.run_simulations(trader_weights)
     
     # Print results
     print("Simulation completed:")

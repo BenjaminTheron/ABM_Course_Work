@@ -1,6 +1,6 @@
 import time
-import pandas as pd
 import random
+import numpy as np
 import pandas as pd
 from typing import Dict, List, Any
 from orderbook import Order
@@ -19,7 +19,7 @@ class Simulator:
         self.num_traders = num_traders  # number of traders in each simulation
         self.performance_log = {}  # stores results of each simulation
         
-    def run_simulations(self):
+    def run_simulations(self, trader_weights):
         """
         Run multiple iterations of the marketplace simulation.
         
@@ -27,11 +27,11 @@ class Simulator:
             Dict: Performance metrics across all simulations
         """
         for x in range(self.iterations):
-            self.performance_log[x] = self.simulate_marketplace()
+            self.performance_log[x] = self.simulate_marketplace(trader_weights)
             
         return self.generate_performance_log()
         
-    def simulate_marketplace(self):
+    def simulate_marketplace(self, trader_weights):
         """
         Runs a single simulation of the marketplace with traders and auctioneer.
         Uses a fixed number of discrete time steps.
@@ -52,27 +52,21 @@ class Simulator:
         
         # Initialize the marketplace with our auctioneer
         marketplace = MarketPlace(auctioneer)
-        
-        # Likelihood a trader acts a given way
-        trader_types_weights = {
-            "aggressive": 20,
-            "passive": 20,
-            "momentum": 20,
-            "random": 20,
-            "fundamental_up": 20,
-            "fundamental_down": 20,
-        }
 
         traders = []
         trader_id = 0  # Initialize trader ID
 
-        # Create traders based on the specified weights
-        for trader_type, count in trader_types_weights.items():
-            for _ in range(count):
-                trader = Trader(trader_id, trader_type, "full", 10000, 100)
-                traders.append(trader)
-                marketplace.register_trader(trader)
-                trader_id += 1  # Increment ID for each new trader
+        # From the distribution of trader types, assign and store the trader types for this simulation
+        trader_types = np.array(np.random.choice(list(trader_weights.keys()),
+                                                 self.num_traders,
+                                                 p=list(trader_weights.values())))
+
+        # Create the traders from the list of assigned trader types
+        for i in range(0, len(trader_types)):
+            trader = Trader(trader_id, trader_types[i], "full", 10_000, 100)
+            traders.append(trader)
+            marketplace.register_trader(trader)
+            trader_id += 1 # Increment for each new traders
 
         # Track initial values to calculate performance
         initial_budgets = {trader.trader_id: trader.budget_size for trader in traders}
@@ -141,14 +135,8 @@ class Simulator:
         # Get trade log for final calculations
         trade_log_df = marketplace.get_trade_log_df()
         
-        # Determine last price for valuation
-        '''
-        last_trade_price = 100  # Default
-        if len(trade_log_df) > 1:
-            last_trade = trade_log_df.iloc[-1]
-            if last_trade['traderID'] != -1:
-                last_trade_price = last_trade['price']
-        '''
+        # Provides a default value for last price
+        last_trade_price = 100
 
         if not trade_log_df.empty:
             last_trade = trade_log_df.iloc[-1]
@@ -166,7 +154,7 @@ class Simulator:
             pnl = final_value - initial_value
             pnl_percent = (pnl / initial_value) * 100 if initial_value > 0 else 0
             
-            # is this valid?
+            # is this valid???
             trader_trades = trade_log_df[trade_log_df['traderID'] == trader_id]
             trade_count = len(trader_trades)
             
@@ -231,9 +219,21 @@ class Simulator:
 
 
 if __name__ == "__main__":
-    # Create and run a simulation with 5 iterations and 10 traders
-    simulator = Simulator(iterations=5, num_traders=10)
-    results = simulator.run_simulations()
+    num_of_traders = 50
+    # For this simulation an equal proportion of traders is picked
+    # The weights/ likelihood for a trader to act a given way
+    trader_weights = {
+        "aggressive": 1/6,
+        "passive": 1/6,
+        "momentum": 1/6,
+        "random": 1/6,
+        "fundamental_up": 1/6,
+        "fundamental_down": 1/6,
+    }
+    
+    # Create and run a simulation with 10 iterations and 20 traders
+    simulator = Simulator(iterations=10, num_traders=num_of_traders)
+    results = simulator.run_simulations(trader_weights)
     
     # Print results
     print("Simulation completed:")

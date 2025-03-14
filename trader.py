@@ -6,7 +6,6 @@ from typing import Optional
 # Import the Order class
 from orderbook import Order
 
-
 class Trader:
     """
     Outlines the class for a given trader in a marketplace, who, using a defined
