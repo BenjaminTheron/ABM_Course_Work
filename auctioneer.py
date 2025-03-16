@@ -73,10 +73,12 @@ class Auctioneer:
         trades_executed = 0
         
         # Continue matching while there are overlapping orders or orders to match
-        while order_book.has_crossing_orders() or (order_book.get_best_bid() is not None\
-              and order_book.get_best_ask() is not None):
+        while order_book.has_crossing_orders():
           best_bid = order_book.get_best_bid()
           best_ask = order_book.get_best_ask()
+
+          if not best_bid or not best_ask:
+            break
             
           # Determine transaction price and quantity
           transaction_price = self.pricing_policy(best_bid.price, best_ask.price)
@@ -84,7 +86,7 @@ class Auctioneer:
             
           # Create and log the trade
           trade = Trade(best_bid, best_ask, transaction_price, transaction_qty, step)
-          self.trade_log.add_trade(trade.to_records())
+          self.trade_log.add_trade(trade)
           trades_executed += 1
             
           # Update order quantities
