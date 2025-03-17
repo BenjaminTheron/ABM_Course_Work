@@ -1,4 +1,4 @@
-from simulator import Simulator
+from simulator import Simulator, Simple_Simulator
 
 def single_strategy_simulator(trader_type, filename, num_traders, iterations, starting_price):
     """
@@ -34,7 +34,7 @@ def single_strategy_simulator(trader_type, filename, num_traders, iterations, st
                 trader_type_weights[other_trader] = remaining_percentage
 
         # At each test percentage, run 50 simulations with a given number of traders
-        simulator = Simulator(iterations=iterations, num_traders=num_traders)
+        simulator = Simple_Simulator(iterations=iterations, num_traders=num_traders)
         results = simulator.run_simulations(trader_type_weights, starting_price)
 
         # Stores the results in a string

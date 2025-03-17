@@ -1,4 +1,4 @@
-from simulator import Simulator
+from simulator import Simulator, Simple_Simulator
 
 if __name__ == "__main__":
     num_of_traders = 50
@@ -14,7 +14,7 @@ if __name__ == "__main__":
     }
     
     # Create and run a simulation with 10 iterations and 20 traders
-    simulator = Simulator(iterations=10, num_traders=num_of_traders)
+    simulator = Simple_Simulator(iterations=10, num_traders=num_of_traders)
     results = simulator.run_simulations(trader_weights, 100)
 
     # Output the results of the simulation
