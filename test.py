@@ -37,3 +37,25 @@ for x in range(10,110,10):
 
 with open("filefile.txt", "w") as f:
     f.write("buffetting buffetting")
+
+trader_type_performance = {
+            "aggressive" : {},
+            "passive" : {},
+            "momentum" : {},
+            "fundamental_up" : {},
+            "fundamental_down" : {},
+            "random" : {}
+        }
+
+# Initialise a dictionary to store the perfomance metrics for each trader type
+for type in trader_type_performance.keys():
+    trader_type_performance[type] = {"num_traders" : 0,
+                                        "PnL" : 1350,
+                                        "num_asks": 0,
+                                        "num_bids": 0,
+                                        "total_trade_volume": 0,
+                                        "total_trades": 0}
+
+type = "aggressive"
+trader_type_performance[type]["PnL"] += 1
+print(trader_type_performance[type])
