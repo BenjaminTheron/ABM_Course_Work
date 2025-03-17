@@ -175,7 +175,51 @@ class OrderBook:
             return False
           
           return best_bid.price >= best_ask.price
+    
+    def get_bid_ask_spread(self):
+        """
+        Calculate the current bid-ask spread.
+    
+        Returns:
+            float or None: The spread between best ask and best bid, or None if no valid spread
+        """
+        best_bid = self.get_best_bid()
+        best_ask = self.get_best_ask()
+    
+        if best_bid and best_ask:
+            spread = best_ask.price - best_bid.price
+            # Only return positive spreads
+            return max(0, spread)
+    
+        return None
 
- 
+    def get_agent_order_concentration(self, agent_type: str, order_type: str) -> float:
+        """
+        Calculate the concentration of orders by agent type and order type.
+        Returns the proportion of volume for the specified agent and order type.
+        """
+        agent_volume = 0
+        total_agent_volume = 0
+        
+        # Calculate volumes for the specified agent type
+        for price, orders in self.bids_by_price.items():
+            for order in orders:
+                if order.agent_type == agent_type:
+                    total_agent_volume += order.quantity
+                    if order.order_type == "bid":
+                        agent_volume += order.quantity
+        
+        for price, orders in self.asks_by_price.items():
+            for order in orders:
+                if order.agent_type == agent_type:
+                    total_agent_volume += order.quantity
+                    if order.order_type == "ask":
+                        agent_volume += order.quantity
+        
+        # Calculate concentration
+        if total_agent_volume == 0:
+            return 0
+            
+        return agent_volume / total_agent_volume if order_type == "ask" else 1 - (agent_volume / total_agent_volume)
 
 

@@ -38,9 +38,8 @@ class Trader:
         order = self.trading_strategy(self.find_market_price(marketplace), step)
         
         return order
-    
 
-    def submit_shout(self, order, marketplace):
+    def submit_shout(self, order, marketplace,solvency=False):
         """
         Submits a provided order to the marketplace.
         
@@ -54,7 +53,7 @@ class Trader:
         accepted = False
         # Checks whether the trader has enough stock/ funds for the order
         if (order.order_type == "bid" and self.budget_size >= order.price * order.quantity)\
-            or (order.order_type == "ask" and self.stock >= order.quantity):
+            or (order.order_type == "ask" and self.stock >= order.quantity) or not solvency:
             # Submits the order to the market place
             accepted = marketplace.add_order(order)
 
@@ -66,7 +65,6 @@ class Trader:
                 self.stock -= order.quantity
     
         return accepted
-    
 
     def delete_trade(self, marketplace, order_id):
         """
@@ -310,7 +308,6 @@ class Simple_Trader(Trader):
 
         # If no order was generated, return None
         return None
-
     
 class LFTrader(Trader):
     """

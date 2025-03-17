@@ -1,3 +1,5 @@
+# simulator.py
+
 import time
 import random
 import numpy as np
@@ -9,6 +11,11 @@ from trader import Trader, Simple_Trader, LFTrader, HFTrader
 from marketplace import MarketPlace
 # import matplotlib as plt
 
+# Import market maker if available
+try:
+    from market_maker import MarketMaker
+except ImportError:
+    MarketMaker = None
 
 class Simulator:
     """
@@ -522,10 +529,9 @@ class Simple_Simulator(Simulator):
         
         # Initialize the marketplace with our auctioneer
         marketplace = MarketPlace(auctioneer)
-
+        
         traders = []
-        trader_id = 0  # Initialize trader ID
-
+        trader_id = 0 # Initialise trader ID
         # From the distribution of trader types, assign and store the trader types for this simulation
         trader_types = np.array(np.random.choice(list(trader_weights.keys()),
                                                  self.num_traders,
@@ -537,7 +543,7 @@ class Simple_Simulator(Simulator):
             traders.append(trader)
             marketplace.register_trader(trader)
             trader_id += 1 # Increment for each new traders
-
+         
         # Track initial values to calculate performance
         initial_budgets = {trader.trader_id: trader.budget_size for trader in traders}
         initial_stocks = {trader.trader_id: trader.stock for trader in traders}
@@ -593,7 +599,7 @@ class Simple_Simulator(Simulator):
                             trader_type_metrics[trader.trader_type][order.order_type] += 1
                             # Update last action time
                             last_action_time[trader.trader_id] = step
-            
+        
             # Execute market clearing after all traders have had a chance to act
             trades_executed = marketplace.match_orders(step)
             # Update each trader's price history once all orders for this step have been submitted
@@ -602,7 +608,7 @@ class Simple_Simulator(Simulator):
             
             # Don't need to process traders positions as this is done in the auctioneer object
         
-        # End of simulation - calculate performance metrics
+        # Calculate final performance metrics
         performance_metrics = self.calculate_performance_metrics(
             marketplace,
             traders,
@@ -619,14 +625,8 @@ class Simple_Simulator(Simulator):
     def calculate_performance_metrics(self, marketplace, traders, initial_budgets, 
                                      initial_stocks, trades_per_trader, orders_per_trader,
                                      starting_price, trader_type_metrics):
-        """
-        Calculate performance metrics at the end of a simulation.
-        
-        Returns:
-            Dict: Performance metrics for traders and the market
-        """
+        """Calculate final performance metrics"""
         performance_metrics = {}
-        
         # Get trade log for final calculations
         trade_log_df = marketplace.get_trade_log_df()
         
