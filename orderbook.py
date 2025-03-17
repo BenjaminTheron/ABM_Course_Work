@@ -5,8 +5,6 @@ from enum import Enum
 from typing import List, Dict, Tuple, Optional, Union, Any
 import random
 
-
-
 class Order:
   """
   Outlines the class for a given order. 
