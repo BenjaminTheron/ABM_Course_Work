@@ -94,7 +94,7 @@ class Simulator:
             trader = LFTrader(
                 trader_id=i,
                 memory_type="full",
-                budget_size=10000,
+                budget_size=10_000,
                 starting_price=100,
                 parameters=self.parameters
             )
