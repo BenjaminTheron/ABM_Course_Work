@@ -7,7 +7,6 @@ import numpy as np
 # Import the Order class
 from orderbook import Order
 
-
 class Trader:
     """
     Outlines the class for a given trader in a marketplace, who, using a defined
@@ -25,7 +24,6 @@ class Trader:
         self.frequency = random.uniform(1, 5)  # How often the trader acts
         self.starting_price = starting_price # required for fundamentalist traders
 
-        
     def generate_bid_ask(self, marketplace, step):
         """
         Uses the trading strategy to instantiate a valid bid/ask order.
@@ -42,7 +40,6 @@ class Trader:
         return order
     
 
-    def submit_shout(self, order, marketplace,solvency=False):
     def submit_shout(self, order, marketplace,solvency=False):
         """
         Submits a provided order to the marketplace.
@@ -69,8 +66,7 @@ class Trader:
                 self.stock -= order.quantity
     
         return accepted
-    
-    
+
     def delete_trade(self, marketplace, order_id):
         """
         Enables a trader to cancel a trade should they choose.
@@ -95,6 +91,7 @@ class Trader:
             return True
         
         return False
+
 
     def create_order(self, current_market_price, step, order_price, min_qty, order_chance, rand_val):
         """
@@ -122,6 +119,7 @@ class Trader:
         
         return None
     
+
     def find_market_price(self, marketplace):
         """
         Finds the current market price of the stock
@@ -431,8 +429,6 @@ class LFTrader(Trader):
             quantity = alpha_c * price_trend + np.random.normal(0, sigma_c)
         
         return quantity
-
-
 
 class HFTrader(Trader):
     """
