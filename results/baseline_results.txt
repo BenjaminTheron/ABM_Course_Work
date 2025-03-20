@@ -1,0 +1,9 @@
+type_weight,total_simulations,avg_total_trades,avg_trade_size,avg_highest_price,avg_lowest_price,avg_start_to_finish_price_change
+type,avg_pnl,avg_trade_size,avg_num_of_trades,avg_bid/ask_ratio,avg_num_of_traders
+baseline,100,9013.38,2.3255,201.63,99.46,91.28
+aggressive,1222.25,5.1727,75.7841,1.2159,25.29
+passive,-10272.11,2.6557,51.436,2.2804,25.0
+momentum,-6227.04,2.7618,71.5413,1.309,24.94
+random,-9423.59,4.3358,61.755,1.2946,24.96
+fundamental_up,-9034.77,13.6184,10.2425,1.7648,24.8
+fundamental_down,56.87,3.4782,2.9018,0.0,25.01
