@@ -38,9 +38,7 @@ def main():
 
         # Initialize genetic algorithm
         ga = GeneticAlgorithm(
-            params=params,
-            population_size=3,
-            generations=3
+            params=params
         )
 
         best_genome = ga.run_evolution(output_dir=genetic_dir)
