@@ -45,16 +45,14 @@ class MarketPlace:
         # Update buyer (bid trader)
         bid_trader = self.traders.get(bid_trader_id)
         if bid_trader:
-            # Trader had balance decreased at time of submission
-            # For a bid, they reserved bid_price * quantity, but only used transaction_price * quantity
-            refund = (trade.bid_order.price - transaction_price) * quantity
-            bid_trader.budget_size += refund
+            bid_trader.budget_size -= transaction_price * quantity
             bid_trader.stock += quantity
         
         # Update seller (ask trader)
         ask_trader = self.traders.get(ask_trader_id)
         if ask_trader:
-            ask_trader.budget_size += transaction_price * quantity
+          ask_trader.budget_size += transaction_price * quantity
+          ask_trader.stock -= quantity
     
     self.auctioneer.trade_log.mark_trades_processed()
     
@@ -211,5 +209,8 @@ class MarketPlace:
       
   def get_lft_sell_concentration_history(self):
     return self.lft_sell_concentration_history
+  
+  def get_volume(self):
+    return self.auctioneer.trade_log.get_total_volume()
   
 

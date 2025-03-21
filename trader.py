@@ -18,9 +18,9 @@ class Trader:
         self.trader_id = trader_id
         self.trader_type = trader_type
         self.memory_type = memory_type
-        self.budget_size = budget_size
+        self.budget_size = 10
         self.profit_loss = 0
-        self.stock = 10  # Each trader starts with 10 stock
+        self.stock = 10  # Each trader starts with 0 stock
         self.frequency = random.uniform(1, 5)  # How often the trader acts
         self.starting_price = starting_price # required for fundamentalist traders
 
@@ -40,7 +40,7 @@ class Trader:
         return order
     
 
-    def submit_shout(self, order, marketplace,solvency=False):
+    def submit_shout(self, order, marketplace):
         """
         Submits a provided order to the marketplace.
         
@@ -52,18 +52,8 @@ class Trader:
             bool: Whether the order was accepted
         """
         accepted = False
-        # Checks whether the trader has enough stock/ funds for the order
-        if (order.order_type == "bid" and self.budget_size >= order.price * order.quantity)\
-            or (order.order_type == "ask" and self.stock >= order.quantity) or not solvency:
-            # Submits the order to the market place
-            accepted = marketplace.add_order(order)
-
-            if accepted and order.order_type == "bid":
-                # Subtract funds from trader
-                self.budget_size -= order.price * order.quantity
-            elif accepted and order.order_type == "ask":
-                # Subtract stock from the trader
-                self.stock -= order.quantity
+      
+        accepted = marketplace.add_order(order)
     
         return accepted
 
@@ -83,10 +73,6 @@ class Trader:
         
         if order and order.trader_id == self.trader_id:
             marketplace.order_book.remove_order(order_id)
-            
-            # If it was a bid, return the reserved funds
-            if order.order_type == "bid":
-                self.budget_size += order.price * order.quantity
                 
             return True
         
@@ -327,6 +313,7 @@ class LFTrader(Trader):
         self.next_trading_time = 0
         self.theoretical_price = 100
         
+    
     def _draw_trading_frequency(self):
         """
         Draw trading frequency from truncated exponential distribution
@@ -408,6 +395,7 @@ class LFTrader(Trader):
         # Switch strategy based on probability
         self.strategy = "chartist" if random.random() < prob_chartist else "fundamentalist"
                        
+    
     def calculate_quantity(self, strategy, last, second_last, fundamental_value):
         # Get parameters from instance or use defaults
         alpha_f = self.parameters.get("alpha_f", 0.04)  # Fundamentalists' order size parameter
@@ -430,6 +418,8 @@ class LFTrader(Trader):
         
         return quantity
 
+
+
 class HFTrader(Trader):
     """
     High-Frequency Trader implementing directional strategies
@@ -448,7 +438,17 @@ class HFTrader(Trader):
         # Price threshold for activation (event-based trading)
         self.price_threshold = random.uniform(eta_min, eta_max)
         self.position_limit = 3000  # Position limit as mentioned in the paper
-        self.net_position = 0  # Current net position
+        self.availableShares = self.stock
+        self.reservedShares = {}
+
+    def submit_shout(self, order, marketplace):
+        accepted = False
+        accepted = marketplace.add_order(order)
+        if order.order_type == "bid":
+            self.availableShares += order.quantity
+        else:
+            self.availableShares -= order.quantity
+        return accepted
         
     def should_activate(self, prev_price, curr_price):
         """
@@ -491,21 +491,20 @@ class HFTrader(Trader):
         is_buy = random.random() < 0.5
         
         # HF traders place orders near the best bid/ask
-        best_bid = order_book.get_best_bid()
-        best_ask = order_book.get_best_ask()
-
+        
         sell_volume = sum(order.quantity for orders in order_book.asks_by_price.values() for order in orders)
         buy_volume = sum(order.quantity for orders in order_book.bids_by_price.values() for order in orders)
-
-         # Determine whether to buy or sell, ensuring it respects position limits
-        if self.net_position < self.position_limit and sell_volume > 0:
+        best_bid = order_book.get_best_bid()
+        best_ask = order_book.get_best_ask()
+        # Determine whether to buy or sell, ensuring it respects position limits
+        if self.availableShares < self.position_limit and sell_volume > 0 and is_buy:
             order_type = "bid"
             reference_price = best_ask.price if best_ask else self.find_market_price(marketplace)
-            quantity_cap = min(self.position_limit - self.net_position, sell_volume // 4)
-        elif self.net_position > -self.position_limit and buy_volume > 0:
+            quantity_cap = min(self.position_limit - self.availableShares, sell_volume // 4)
+        elif self.availableShares > -self.position_limit and buy_volume > 0 and not is_buy:
             order_type = "ask"
             reference_price = best_bid.price if best_bid else self.find_market_price(marketplace)
-            quantity_cap = min(self.position_limit + self.net_position, buy_volume // 4)
+            quantity_cap = min(self.position_limit + self.availableShares, buy_volume // 4)
         else:
             return None
             
@@ -514,15 +513,9 @@ class HFTrader(Trader):
         price = reference_price * (1 + kappa) if order_type == "bid" else reference_price * (1 - kappa)
         
         # Set a valid order quantity
-        quantity = max(1, min(int(np.random.poisson(lambda_param * 100)), quantity_cap))
+        quantity =  min(int(np.random.poisson(lambda_param * 100)), quantity_cap)
         if quantity <= 0:
             return None
-        
-        # Adjust net position accordingly
-        if order_type == "bid":
-            self.net_position += quantity
-        else:
-            self.net_position -= quantity
         
         # Create the order
         order = Order(

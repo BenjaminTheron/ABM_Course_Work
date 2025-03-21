@@ -9,7 +9,6 @@ from orderbook import Order
 from auctioneer import Auctioneer
 from trader import Trader, Simple_Trader, LFTrader, HFTrader
 from marketplace import MarketPlace
-# import matplotlib as plt
 
 # Import market maker if available
 try:
@@ -22,8 +21,8 @@ class Simulator:
     Simulator for running marketplace trading scenarios using an iteration-based approach.
     Each simulation consists of a fixed number of discrete time steps.
     """
-    def __init__(self, iterations: int, num_lf_traders: int, num_hf_traders: int,
-                 parameters=None, use_market_maker=False, market_maker_params=None):
+    def __init__(self, iterations: int, num_lf_traders: int, num_hf_traders: int, parameters=None,
+                 use_market_maker=False, market_maker_params=None):
         """
         Initialize the simulator
         
@@ -36,21 +35,22 @@ class Simulator:
             market_maker_params: Parameters for the market maker
         """
         self.iterations = iterations  # number of times to simulate the marketplace
-        self.num_lf_traders = num_lf_traders
-        self.num_hf_traders = num_hf_traders
+        
         self.use_market_maker = use_market_maker
-        self.market_maker_params = market_maker_params 
-        self.performance_log = {} # Stores the result of each simulation
-        self.market_maker = None # Reference to market maker if used
-
+        self.market_maker_params = market_maker_params
+        self.performance_log = {}  # stores results of each simulation
+        self.market_maker = None  # Reference to market maker if used
+        
         # Store parameters
         if parameters is None:
             # Import default parameters if none provided
             from parameters import PARAMETERS
             self.parameters = PARAMETERS.copy()
         else:
-            self.parameters = param
-            
+            self.parameters = parameters
+        self.num_lf_traders = parameters["NL"]
+        self.num_hf_traders = parameters["NH"]
+        
     def run_simulations(self):
         """
         Run multiple iterations of the marketplace simulation.
@@ -95,12 +95,13 @@ class Simulator:
             trader = LFTrader(
                 trader_id=i,
                 memory_type="full",
-                budget_size=10_000,
+                budget_size=0,
                 starting_price=100,
                 parameters=self.parameters
             )
             lf_traders.append(trader)
             marketplace.register_trader(trader)
+        
             
         # Create HF traders
         hf_traders = []
@@ -108,7 +109,7 @@ class Simulator:
             trader = HFTrader(
                 trader_id=self.num_lf_traders + i,
                 memory_type="full",
-                budget_size=10000,
+                budget_size=0,
                 starting_price=100,
                 parameters=self.parameters
             )
@@ -121,7 +122,7 @@ class Simulator:
             mm_id = self.num_lf_traders + self.num_hf_traders
             self.market_maker = MarketMaker(
                 trader_id=mm_id,
-                initial_budget=100000,
+                initial_budget=0,
                 parameters=self.market_maker_params
             )
             marketplace.register_trader(self.market_maker)
@@ -145,6 +146,7 @@ class Simulator:
             "lft_buy_concentration": [],
             "mm_inventory": [] if self.market_maker else None,
             "mm_orders": [] if self.market_maker else None,
+            "volume": 0
         }
         
         # Get simulation steps from parameters
@@ -169,7 +171,7 @@ class Simulator:
                 if mm_orders:
                     # Market maker may generate multiple orders
                     for order in mm_orders:
-                        self.market_maker.submit_shout(order, marketplace, solvency=True)
+                        self.market_maker.submit_shout(order, marketplace)
                     
                     # Track market maker activity
                     trade_metrics["mm_orders"].append(len(mm_orders))
@@ -214,8 +216,8 @@ class Simulator:
                 trader.update_strategy(marketplace.get_last_price(), marketplace.get_price_at(-2), fundamental_value)
 
             # Clean expired orders - critical for HFT order cancellation behavior
-            lf_expired = self.clean_expired_orders(marketplace.order_book, step, "LF", self.parameters.get("gamma_L", 20))
-            hf_expired = self.clean_expired_orders(marketplace.order_book, step, "HF", self.parameters.get("gamma_H", 1))
+            lf_expired = self.clean_expired_orders(marketplace, marketplace.order_book, step, "LF", self.parameters.get("gamma_L", 20))
+            hf_expired = self.clean_expired_orders(marketplace, marketplace.order_book, step, "HF", self.parameters.get("gamma_H", 1))
             
             trade_metrics["bid_ask_spreads"] = marketplace.get_spread_history()
             trade_metrics["price_series"] = marketplace.get_price_history()
@@ -226,6 +228,7 @@ class Simulator:
         trade_metrics["hft_sell_concentration"] = marketplace.get_hft_sell_concentration_history()
         trade_metrics["lft_buy_concentration"] = [1 - c for c in marketplace.get_lft_sell_concentration_history()]
         trade_metrics["bid_ask_spreads"] = marketplace.get_spread_history()
+        trade_metrics["volume"] = marketplace.get_volume()
         
         # Print summary statistics
         print(f"HFT activation frequency: {hft_activation_count/simulation_steps:.2%} of periods")
@@ -246,8 +249,8 @@ class Simulator:
         )
         
         return performance_metrics
-
-    def clean_expired_orders(self, order_book, current_step, trader_type, expiry_periods):
+        
+    def clean_expired_orders(self, marketplace, order_book, current_step, trader_type, expiry_periods):
         """
         Remove expired orders from the book based on trader type
     
@@ -268,16 +271,24 @@ class Simulator:
                 if current_step - order.time >= expiry_periods:
                     # Remove order from the book
                     removed_order = order_book.remove_order(order_id)
+                    
                     if removed_order:
+                        trader = marketplace.traders.get(removed_order.trader_id)
+                        if trader.trader_type =="HF":
+                            if removed_order.order_type == "bid":
+                                trader.availableShares -= removed_order.quantity
+                            else:  # ask
+                                trader.availableShares += removed_order.quantity
                         expired_orders.append(removed_order)
                         expired_count += 1
+                        
     
         # Print debug info for HFT order cancellations
         #if trader_type == "HF" and expired_count > 0:
         #    print(f"Step {current_step}: Cancelled {expired_count} HFT orders after {expiry_periods} periods")
         
         return expired_orders
-
+    
     def detect_flash_crashes(self, metrics, step, marketplace):
         """
         Detect flash crashes based on the paper's definition:
@@ -332,9 +343,8 @@ class Simulator:
                     crash["duration"] = step - crash["start"]
                     metrics["recovery_times"].append(crash["duration"])
                     print(f"FLASH CRASH RECOVERY at step {step}: Duration {crash['duration']} periods")
-
     def calculate_performance_metrics(self, marketplace, traders, initial_budgets, 
-                                      initial_stocks, trade_metrics):
+                                  initial_stocks, trade_metrics):
         """Calculate final performance metrics"""
         # Get trade log
         trade_log_df = marketplace.get_trade_log_df()
@@ -356,10 +366,16 @@ class Simulator:
         
         # Calculate average bid-ask spread
         avg_spread = np.mean(trade_metrics["bid_ask_spreads"])
+
+        # Calculate average total volume
+        avg_volume = np.mean(trade_metrics["volume"])
+
+        # Aggregate trader metrics by type
+        trader_type_data = {}
         
-        # Calculate P&L for each trader
-        trader_metrics = {}
+        # First pass: collect data by trader type
         for trader in traders:
+            trader_type = trader.trader_type
             trader_id = trader.trader_id
             
             # Calculate total value
@@ -370,16 +386,41 @@ class Simulator:
             pnl = final_value - initial_value
             pnl_percent = (pnl / initial_value) * 100 if initial_value > 0 else 0
             
-            # Store metrics
-            trader_metrics[f"trader_{trader_id}"] = {
-                "type": trader.trader_type,
-                "initial_budget": initial_budgets[trader_id],
-                "final_budget": trader.budget_size,
-                "initial_stock": initial_stocks[trader_id],
-                "final_stock": trader.stock,
-                "pnl": pnl,
-                "pnl_percent": pnl_percent
-            }
+            # Initialize trader type data if not exists
+            if trader_type not in trader_type_data:
+                trader_type_data[trader_type] = {
+                    "count": 0,
+                    "initial_budget_sum": 0,
+                    "final_budget_sum": 0,
+                    "initial_stock_sum": 0,
+                    "final_stock_sum": 0,
+                    "pnl_sum": 0,
+                    "pnl_percent_sum": 0
+                }
+            
+            # Add to sums
+            trader_type_data[trader_type]["count"] += 1
+            trader_type_data[trader_type]["initial_budget_sum"] += initial_budgets[trader_id]
+            trader_type_data[trader_type]["final_budget_sum"] += trader.budget_size
+            trader_type_data[trader_type]["initial_stock_sum"] += initial_stocks[trader_id]
+            trader_type_data[trader_type]["final_stock_sum"] += trader.stock
+            trader_type_data[trader_type]["pnl_sum"] += pnl
+            trader_type_data[trader_type]["pnl_percent_sum"] += pnl_percent
+        
+        # Second pass: calculate averages
+        trader_metrics = {}
+        for trader_type, data in trader_type_data.items():
+            count = data["count"]
+            if count > 0:
+                trader_metrics[trader_type] = {
+                    "count": count,
+                    "avg_initial_budget": data["initial_budget_sum"] / count,
+                    "avg_final_budget": data["final_budget_sum"] / count,
+                    "avg_initial_stock": data["initial_stock_sum"] / count,
+                    "avg_final_stock": data["final_stock_sum"] / count,
+                    "avg_pnl": data["pnl_sum"] / count,
+                    "avg_pnl_percent": data["pnl_percent_sum"] / count
+                }
         
         # Aggregate metrics
         performance_metrics = {
@@ -387,7 +428,8 @@ class Simulator:
             "num_flash_crashes": num_flash_crashes,
             "avg_crash_duration": avg_crash_duration,
             "avg_bid_ask_spread": avg_spread,
-            "traders": trader_metrics,
+            "avg_volume": avg_volume,
+            "trader_types": trader_metrics,  # Changed from "traders" to "trader_types"
             "price_series": trade_metrics["price_series"],
             "flash_crashes": trade_metrics["flash_crashes"],
             "bid_ask_spreads": trade_metrics["bid_ask_spreads"],
@@ -396,7 +438,7 @@ class Simulator:
         }
         
         return performance_metrics
-
+    
     def generate_performance_log(self):
         """Aggregate performance metrics across simulations"""
         aggregated_metrics = {
@@ -406,20 +448,78 @@ class Simulator:
         
         # Calculate average metrics
         if self.iterations > 0:
-            total_volatility = sum(sim["volatility"] for sim in self.performance_log.values())
-            total_flash_crashes = sum(sim["num_flash_crashes"] for sim in self.performance_log.values())
+            # Initialize aggregated trader type metrics
+            trader_types_metrics = {}
             
-            # Calculate average flash crash duration across simulations with crashes
+            # Collect basic metrics
+            total_volatility = 0
+            total_flash_crashes = 0
+            total_bid_ask_spread = 0
+            total_volume = 0
             crash_durations = []
+            
+            # Process each simulation
             for sim in self.performance_log.values():
+                # Add basic metrics
+                total_volatility += sim["volatility"]
+                total_flash_crashes += sim["num_flash_crashes"]
+                total_bid_ask_spread += sim["avg_bid_ask_spread"]
+                total_volume += sim.get("avg_volume", 0)
+                
+                # Add crash durations if available
                 if sim["num_flash_crashes"] > 0 and sim["avg_crash_duration"] > 0:
                     crash_durations.append(sim["avg_crash_duration"])
+                
+                # Process trader type metrics
+                if "trader_types" in sim:
+                    for trader_type, metrics in sim["trader_types"].items():
+                        if trader_type not in trader_types_metrics:
+                            # Initialize with counter and sums for each metric
+                            trader_types_metrics[trader_type] = {
+                                "count": 0,
+                                "avg_initial_budget_sum": 0,
+                                "avg_final_budget_sum": 0,
+                                "avg_initial_stock_sum": 0,
+                                "avg_final_stock_sum": 0,
+                                "avg_pnl_sum": 0,
+                                "avg_pnl_percent_sum": 0,
+                                "simulation_count": 0
+                            }
+                        
+                        # Add metrics from this simulation
+                        trader_types_metrics[trader_type]["count"] += metrics["count"]
+                        trader_types_metrics[trader_type]["avg_initial_budget_sum"] += metrics["avg_initial_budget"]
+                        trader_types_metrics[trader_type]["avg_final_budget_sum"] += metrics["avg_final_budget"]
+                        trader_types_metrics[trader_type]["avg_initial_stock_sum"] += metrics["avg_initial_stock"]
+                        trader_types_metrics[trader_type]["avg_final_stock_sum"] += metrics["avg_final_stock"]
+                        trader_types_metrics[trader_type]["avg_pnl_sum"] += metrics["avg_pnl"]
+                        trader_types_metrics[trader_type]["avg_pnl_percent_sum"] += metrics["avg_pnl_percent"]
+                        trader_types_metrics[trader_type]["simulation_count"] += 1
             
-            avg_crash_duration = np.mean(crash_durations) if crash_durations else 0
-            
+            # Calculate averages for basic metrics
             aggregated_metrics["avg_volatility"] = total_volatility / self.iterations
             aggregated_metrics["avg_flash_crashes"] = total_flash_crashes / self.iterations
-            aggregated_metrics["avg_crash_duration"] = avg_crash_duration
+            aggregated_metrics["avg_crash_duration"] = sum(crash_durations) / len(crash_durations) if crash_durations else 0
+            aggregated_metrics["avg_bid_ask_spread"] = total_bid_ask_spread / self.iterations
+            aggregated_metrics["avg_volume"] = total_volume / self.iterations
+            
+            # Calculate average trader type metrics
+            avg_trader_types = {}
+            for trader_type, sums in trader_types_metrics.items():
+                sim_count = sums["simulation_count"]
+                if sim_count > 0:
+                    avg_trader_types[trader_type] = {
+                        "avg_count_per_sim": sums["count"] / sim_count,
+                        "avg_initial_budget": sums["avg_initial_budget_sum"] / sim_count,
+                        "avg_final_budget": sums["avg_final_budget_sum"] / sim_count,
+                        "avg_initial_stock": sums["avg_initial_stock_sum"] / sim_count,
+                        "avg_final_stock": sums["avg_final_stock_sum"] / sim_count,
+                        "avg_pnl": sums["avg_pnl_sum"] / sim_count,
+                        "avg_pnl_percent": sums["avg_pnl_percent_sum"] / sim_count
+                    }
+            
+            # Add to aggregated metrics
+            aggregated_metrics["avg_trader_types"] = avg_trader_types
         
         return aggregated_metrics
 

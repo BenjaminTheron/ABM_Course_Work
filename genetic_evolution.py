@@ -11,6 +11,7 @@ import matplotlib.cm as cm
 from matplotlib.patches import Polygon
 import seaborn as sns
 from tqdm import tqdm
+import plotly.graph_objects as go
 
 # Import simulation components
 from simulator import Simulator
@@ -21,7 +22,7 @@ class GeneticAlgorithm:
     """
     Evolutionary algorithm to optimize market maker parameters
     """
-    def __init__(self, population_size=20, generations=10, mutation_rate=0.1, elite_size=2):
+    def __init__(self, params=PARAMETERS.copy(), population_size=20, generations=10, mutation_rate=0.1, elite_size=2):
         """
         Initialize the genetic algorithm
         
@@ -55,7 +56,7 @@ class GeneticAlgorithm:
         }
         
         # Simulation parameters
-        self.simulation_params = PARAMETERS.copy()
+        self.simulation_params = params
         self.simulation_steps = self.simulation_params.get("T", 1200)
     
     def initialize_population(self):
@@ -412,7 +413,7 @@ class GeneticAlgorithm:
     
     def plot_genome_radar(self, genome, output_path):
         """
-        Create a radar plot of a genome
+        Create a radar plot of a genome using Plotly
         
         Args:
             genome: The genome to visualize
@@ -425,40 +426,67 @@ class GeneticAlgorithm:
         
         # Setup radar plot
         params = list(self.param_bounds.keys())
-        N = len(params)
         
-        # Create angles for each parameter
-        angles = [n / N * 2 * np.pi for n in range(N)]
-        angles += angles[:1]  # Close the loop
-        
-        # Get values
-        values = [normalized_genome[param] for param in params]
-        values += values[:1]  # Close the loop
-        
-        # Plot
-        fig = plt.figure(figsize=(8, 8))
-        ax = fig.add_subplot(111, polar=True)
-        
-        # Draw polygon
-        ax.plot(angles, values, 'o-', linewidth=2)
-        ax.fill(angles, values, alpha=0.25)
-        
-        # Set labels
-        ax.set_thetagrids(np.degrees(angles[:-1]), params)
-        
-        # Add labels for actual values
-        for angle, value, param in zip(angles[:-1], values[:-1], params):
-            actual_value = genome[param]
+        # Format the actual values for display
+        actual_values = []
+        for param in params:
+            value = genome[param]
             if param == "max_inventory_limit":
-                label = f"{actual_value:.0f}"
+                actual_values.append(f"{value:.0f}")
             else:
-                label = f"{actual_value:.4f}"
-            
-            ax.text(angle, value + 0.1, label, 
-                    horizontalalignment='center', 
-                    verticalalignment='center')
+                actual_values.append(f"{value:.4f}")
         
-        ax.set_title("Market Maker Genome", size=15, y=1.1)
-        plt.tight_layout()
-        plt.savefig(output_path)
-        plt.close()
+        # Create the radar chart using Plotly
+        fig = go.Figure()
+        
+        # Add the radar trace
+        fig.add_trace(go.Scatterpolar(
+            r=[normalized_genome[param] for param in params] + [normalized_genome[params[0]]],  # Close the loop
+            theta=params + [params[0]],  # Close the loop
+            fill='toself',
+            name='Normalized Values',
+            line=dict(color='rgba(32, 128, 255, 0.8)', width=2),
+            fillcolor='rgba(32, 128, 255, 0.2)'
+        ))
+        
+        # Add markers for each parameter with the actual value as hover text
+        fig.add_trace(go.Scatterpolar(
+            r=[normalized_genome[param] for param in params],
+            theta=params,
+            mode='markers+text',
+            name='Parameters',
+            marker=dict(color='rgba(32, 128, 255, 1)', size=10),
+            text=actual_values,
+            textposition="top center",
+            hoverinfo="text",
+            hovertext=[f"{param}: {value}" for param, value in zip(params, actual_values)]
+        ))
+        
+        # Configure the layout
+        fig.update_layout(
+            polar=dict(
+                radialaxis=dict(
+                    visible=True,
+                    range=[0, 1],
+                    tickfont=dict(size=10)
+                ),
+                angularaxis=dict(
+                    tickfont=dict(size=12, color='rgb(50, 50, 50)'),
+                )
+            ),
+            showlegend=False,
+            title={
+                'text': "Market Maker Genome",
+                'y':0.95,
+                'x':0.5,
+                'xanchor': 'center',
+                'yanchor': 'top',
+                'font': dict(size=20)
+            },
+            margin=dict(l=80, r=80, t=100, b=80),
+            height=700,
+            width=700,
+        )
+        
+        # Save the figure as PNG
+        fig.write_image(output_path)

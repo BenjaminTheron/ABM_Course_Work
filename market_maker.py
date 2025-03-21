@@ -8,7 +8,7 @@ class MarketMaker(Trader):
     Market Maker that provides liquidity by continuously posting bid and ask orders.
     Inherits from the base Trader class.
     """
-    def __init__(self, trader_id, initial_budget=100000, parameters=None):
+    def __init__(self, trader_id, initial_budget=0, parameters=None):
         """
         Initialize a Market Maker with genetic parameters
         
@@ -106,7 +106,7 @@ class MarketMaker(Trader):
         ask_price = mid_price * (1 + ask_spread)
         
         # Determine order size based on genetic parameter
-        base_order_size = max(1, int(self.max_inventory_limit * self.order_size_multiplier))
+        base_order_size = int(self.max_inventory_limit * self.order_size_multiplier)
         
         # Create orders
         orders = []
@@ -161,7 +161,7 @@ class MarketMaker(Trader):
         
         for order in orders:
             # Submit the order using the parent class method
-            accepted = self.submit_shout(order, marketplace, solvency=True)
+            accepted = self.submit_shout(order, marketplace)
             
             if accepted:
                 submitted_orders.append(order)
@@ -178,13 +178,6 @@ class MarketMaker(Trader):
             if order and order.trader_id == self.trader_id:
                 # Remove the order from the book
                 removed_order = marketplace.order_book.remove_order(order_id)
-                
-                if removed_order:
-                    # Return reserved funds or stock
-                    if removed_order.order_type == "bid":
-                        self.budget_size += removed_order.price * removed_order.quantity
-                    else:  # ask
-                        self.stock += removed_order.quantity
         
         # Clear active orders list
         self.active_orders = []
@@ -201,11 +194,11 @@ class MarketMaker(Trader):
         
         # Calculate fitness components
         pnl_component = pnl
-        risk_component = -self.max_position_seen * 0.01  # Penalize high positions
-        volume_component = self.total_volume * 0.01  # Reward high volume
+        #risk_component = -self.max_position_seen * 0.01  # Penalize high positions
+        #volume_component = self.total_volume * 0.01  # Reward high volume
         
         # Calculate final fitness score
-        self.fitness = pnl_component + risk_component + volume_component
+        self.fitness = pnl_component #+ risk_component + volume_component
         
         return self.fitness
     
