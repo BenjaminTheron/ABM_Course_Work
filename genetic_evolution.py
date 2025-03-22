@@ -11,6 +11,8 @@ import matplotlib.cm as cm
 from matplotlib.patches import Polygon
 import seaborn as sns
 from tqdm import tqdm
+import kaleido
+import plotly
 import plotly.graph_objects as go
 
 # Import simulation components

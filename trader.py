@@ -418,8 +418,6 @@ class LFTrader(Trader):
         
         return quantity
 
-
-
 class HFTrader(Trader):
     """
     High-Frequency Trader implementing directional strategies

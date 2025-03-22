@@ -1,0 +1,11 @@
+{
+    "genome_num": 1,
+    "best_genome": {
+        "bid_spread_factor": 0.004009984667996794,
+        "ask_spread_factor": 0.01,
+        "max_inventory_limit": 459,
+        "hedge_ratio": 0.10217964146733177,
+        "order_size_multiplier": 0.03400310384776576,
+        "skew_factor": 0.0021861283077119985
+    }
+}

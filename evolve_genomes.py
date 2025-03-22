@@ -1,6 +1,7 @@
 import os
 import argparse
 import json
+import kaleido
 from genetic_evolution import GeneticAlgorithm
 from parameters import PARAMETERS
 
