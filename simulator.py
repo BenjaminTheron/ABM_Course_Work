@@ -9,6 +9,7 @@ from orderbook import Order
 from auctioneer import Auctioneer
 from trader import Trader, Simple_Trader, LFTrader, HFTrader
 from marketplace import MarketPlace
+from analysis_tools import MatplotlibAnimator
 
 # Import market maker if available
 try:
@@ -21,8 +22,8 @@ class Simulator:
     Simulator for running marketplace trading scenarios using an iteration-based approach.
     Each simulation consists of a fixed number of discrete time steps.
     """
-    def __init__(self, iterations: int, num_lf_traders: int, num_hf_traders: int, parameters=None,
-                 use_market_maker=False, market_maker_params=None):
+    def __init__(self, parameters=None,
+                 use_market_maker=False, market_maker_params=None, detection_window=40, lookback=10):
         """
         Initialize the simulator
         
@@ -34,12 +35,14 @@ class Simulator:
             use_market_maker: Whether to include a market maker
             market_maker_params: Parameters for the market maker
         """
-        self.iterations = iterations  # number of times to simulate the marketplace
         
         self.use_market_maker = use_market_maker
         self.market_maker_params = market_maker_params
         self.performance_log = {}  # stores results of each simulation
         self.market_maker = None  # Reference to market maker if used
+        self.detection_window = detection_window
+        self.lookback = lookback
+        self.animate = False
         
         # Store parameters
         if parameters is None:
@@ -50,8 +53,9 @@ class Simulator:
             self.parameters = parameters
         self.num_lf_traders = parameters["NL"]
         self.num_hf_traders = parameters["NH"]
+        self.iterations = parameters["MC"]
         
-    def run_simulations(self):
+    def run_simulations(self, animate=False):
         """
         Run multiple iterations of the marketplace simulation.
         
@@ -60,14 +64,14 @@ class Simulator:
         """
         for x in range(self.iterations):
             print(f"Running simulation {x+1}/{self.iterations}")
-            self.performance_log[x] = self.simulate_marketplace()
+            self.performance_log[x] = self.simulate_marketplace(animate)
 
             num_flash_crashes = len(self.performance_log[x].get("flash_crashes", []))
             print(f"Number of flash crashes: {num_flash_crashes}")
             
         return self.generate_performance_log()
         
-    def simulate_marketplace(self):
+    def simulate_marketplace(self, animate=False):
         """
         Runs a single simulation of the marketplace with traders and auctioneer.
         Uses a fixed number of discrete time steps.
@@ -87,7 +91,7 @@ class Simulator:
         )
         
         # Initialize the marketplace with our auctioneer
-        marketplace = MarketPlace(auctioneer)
+        marketplace = MarketPlace(auctioneer,parameters=self.parameters)
         
         # Create LF traders
         lf_traders = []
@@ -95,7 +99,7 @@ class Simulator:
             trader = LFTrader(
                 trader_id=i,
                 memory_type="full",
-                budget_size=0,
+                budget_size=10,
                 starting_price=100,
                 parameters=self.parameters
             )
@@ -109,7 +113,7 @@ class Simulator:
             trader = HFTrader(
                 trader_id=self.num_lf_traders + i,
                 memory_type="full",
-                budget_size=0,
+                budget_size=10,
                 starting_price=100,
                 parameters=self.parameters
             )
@@ -122,11 +126,13 @@ class Simulator:
             mm_id = self.num_lf_traders + self.num_hf_traders
             self.market_maker = MarketMaker(
                 trader_id=mm_id,
-                initial_budget=0,
+                initial_budget=10,
                 parameters=self.market_maker_params
             )
             marketplace.register_trader(self.market_maker)
             print("Market Maker activated for this simulation")
+        if animate:
+            animator = MatplotlibAnimator(update_frequency=1)#max(1, self.parameters["T"] // 200))
 
         # Store initial state for performance tracking
         all_traders = lf_traders + hf_traders
@@ -160,8 +166,12 @@ class Simulator:
             # Update fundamental value
             marketplace.update_fundamental_value(
                 delta=self.parameters.get("delta", 0.0001),
-                sigma_y=self.parameters.get("sigma_y", 0.01)
+                sigma_y=self.parameters.get("sigma_y", 0.01),
+                step=step
             )
+            if 'fundamental_value_history' not in trade_metrics:
+                trade_metrics['fundamental_value_history'] = []
+            trade_metrics['fundamental_value_history'].append(marketplace.get_fundamental_value())
             
             fundamental_value = marketplace.get_fundamental_value()
             
@@ -187,20 +197,42 @@ class Simulator:
             
             # Count active HF traders for this step
             active_hft_count = 0
-            
-            # HF traders act
-            for trader in hf_traders:
-                # Check if HF trader should be activated based on price changes
-                if len(marketplace.closing_price_history) >= 2:
-                    prev_price = marketplace.closing_price_history[-2]
-                    curr_price = marketplace.closing_price_history[-1]
+            if self.parameters["randomise_HF"]:
+                active_hf_traders = []
+                for trader in hf_traders:
+                    # Check if HF trader should be activated based on price changes
+                    if len(marketplace.closing_price_history) >= 2:
+                        prev_price = marketplace.closing_price_history[-2]
+                        curr_price = marketplace.closing_price_history[-1]
 
-                    if trader.should_activate(prev_price, curr_price):
-                        active_hft_count += 1
+                        if trader.should_activate(prev_price, curr_price):
+                            active_hf_traders.append(trader)
+                            active_hft_count += 1
+
+                # Shuffle the list of active HF traders to randomize processing order
+                if active_hf_traders:
+                    random.shuffle(active_hf_traders)
+                    
+                    # Process the active HF traders in random order
+                    for trader in active_hf_traders:
                         order = trader.generate_order(marketplace, step)
                         if order:
                             order.agent_type = "HF"
                             trader.submit_shout(order, marketplace)
+            else:
+                # HF traders act
+                for trader in hf_traders:
+                    # Check if HF trader should be activated based on price changes
+                    if len(marketplace.closing_price_history) >= 2:
+                        prev_price = marketplace.closing_price_history[-2]
+                        curr_price = marketplace.closing_price_history[-1]
+
+                        if trader.should_activate(prev_price, curr_price):
+                            active_hft_count += 1
+                            order = trader.generate_order(marketplace, step)
+                            if order:
+                                order.agent_type = "HF"
+                                trader.submit_shout(order, marketplace)
             
             if active_hft_count > 0:
                 hft_activation_count += 1
@@ -213,7 +245,10 @@ class Simulator:
             
             # Update LF trader strategies
             for trader in lf_traders:
-                trader.update_strategy(marketplace.get_last_price(), marketplace.get_price_at(-2), fundamental_value)
+                trader.update_strategy(marketplace.get_last_price(), marketplace.get_price_at(-2), fundamental_value, step, self.parameters["continuous"])
+            current_price = marketplace.get_last_price()
+            if animate:
+                animator.update(step, current_price, marketplace)
 
             # Clean expired orders - critical for HFT order cancellation behavior
             lf_expired = self.clean_expired_orders(marketplace, marketplace.order_book, step, "LF", self.parameters.get("gamma_L", 20))
@@ -223,15 +258,22 @@ class Simulator:
             trade_metrics["price_series"] = marketplace.get_price_history()
             
             # Detect flash crashes
-            self.detect_flash_crashes(trade_metrics, step, marketplace)
-        
+            #self.detect_flash_crashes(trade_metrics, step, marketplace)
+        if self.animate:
+            animator.close()
         trade_metrics["hft_sell_concentration"] = marketplace.get_hft_sell_concentration_history()
         trade_metrics["lft_buy_concentration"] = [1 - c for c in marketplace.get_lft_sell_concentration_history()]
         trade_metrics["bid_ask_spreads"] = marketplace.get_spread_history()
         trade_metrics["volume"] = marketplace.get_volume()
+        # Call the post-processing function at the end of simulate_marketplace
+        price_series = np.array(trade_metrics["price_series"])
+        flash_crashes = self.post_process_flash_crashes(price_series,max_recovery_window=self.detection_window, lookback=self.lookback)
+        trade_metrics["flash_crashes"] = flash_crashes
+        trade_metrics["recovery_times"] = [crash["duration"] for crash in flash_crashes]
         
         # Print summary statistics
         print(f"HFT activation frequency: {hft_activation_count/simulation_steps:.2%} of periods")
+        print(f"Num flash crashes: {len(flash_crashes)}")
         
         # Calculate market maker fitness if present
         if self.market_maker:
@@ -289,60 +331,67 @@ class Simulator:
         
         return expired_orders
     
-    def detect_flash_crashes(self, metrics, step, marketplace):
+    def post_process_flash_crashes(self, price_series, threshold=0.05, max_recovery_window=30, lookback=15):
         """
-        Detect flash crashes based on the paper's definition:
-        - Drop of at least 5% followed by a recovery within 30 periods
+        Detect flash crashes in price series.
+        
+        Args:
+            price_series: List of prices over time
+            threshold: Minimum percentage drop to qualify as a flash crash (default: 5%)
+            max_recovery_window: Maximum periods for recovery (default: 30)
+            
+        Returns:
+            List of dictionaries containing flash crash details
         """
-        price_series = metrics["price_series"]
-
-        # Need at least 2 prices to detect a drop
-        if len(price_series) < 2:
-            return
+        flash_crashes = []
+        lookback = 10
+        i = lookback
         
-        current_price = price_series[-1]
-
-        # Use a 5-period lookback for detecting recent highs
-        lookback = min(5, len(price_series) - 1)
-        recent_high = max(price_series[-lookback-1:-1]) if lookback > 0 else price_series[-1]
-
-        # Calculate percentage drop
-        if recent_high > 0:  # Avoid division by zero
-            percentage_drop = (recent_high - current_price) / recent_high
-        
-            # Debug print for significant drops
-            #if percentage_drop > 0.03:
-            #    print(f"Price drop detected at step {step}: {percentage_drop:.2%} (from {recent_high:.2f} to {current_price:.2f})")
-        
-            # Check for flash crash conditions
-            if percentage_drop >= 0.05:
-                # This could be a flash crash - make sure it's new
-                if not metrics["flash_crashes"] or step - metrics["flash_crashes"][-1]["start"] > 30:
-                    print(f"FLASH CRASH DETECTED at step {step}: {percentage_drop:.2%} drop")
-                    
-                    # Get highest price trade for this step for more accurate analysis
-                    highest_price_trade = marketplace.auctioneer.trade_log.get_highest_price_trade(step)
-                    highest_price = highest_price_trade.price if highest_price_trade else current_price
-                    
-                    # New crash (not within recovery period of previous crash)
-                    metrics["flash_crashes"].append({
-                        "start": step,
+        while i < len(price_series)-1:
+            new_idx = -1
+            current_price = price_series[i]
+            
+            # Find all valid reference prices in the lookback window
+            valid_refs = []
+            for j in range(i-lookback, i):
+                ref_price = price_series[j]
+                if ref_price > 0 and (ref_price - current_price) / ref_price >= threshold:
+                    valid_refs.append(ref_price)
+            
+            if valid_refs:
+                # Use the minimum valid reference price
+                reference_price = min(valid_refs)
+                percentage_drop = (reference_price - current_price) / reference_price
+                
+                if percentage_drop >= threshold:
+                    crash_details = {
+                        "start": i,
                         "low_price": current_price,
-                        "pre_crash_price": recent_high,
-                        "highest_trade_price": highest_price,
-                        "recovery_step": None
-                    })
+                        "pre_crash_price": reference_price,
+                        "recovery_step": None,
+                        "duration": None
+                    }
+                    
+                    # Check for recovery
+                    recovery_threshold = 0.99 * reference_price
+                    
+                    for j in range(1, min(max_recovery_window, len(price_series) - i - 1)):
+                        recovery_price = price_series[i + j]
+                        if recovery_price >= recovery_threshold:
+                            crash_details["recovery_step"] = i + j
+                            crash_details["duration"] = j
+                            flash_crashes.append(crash_details)
+                            new_idx = i+j
+                            break
+            if new_idx != -1:
+                i = new_idx
+            else:
+                i += 1
+                    
+        
+        return flash_crashes
     
-        # Check for recovery of ongoing flash crashes
-        for crash in metrics["flash_crashes"]:
-            if crash["recovery_step"] is None:
-                # Recovery defined as price returning to within 1% of pre-crash level
-                recovery_threshold = 0.99 * crash["pre_crash_price"]
-                if current_price >= recovery_threshold:
-                    crash["recovery_step"] = step
-                    crash["duration"] = step - crash["start"]
-                    metrics["recovery_times"].append(crash["duration"])
-                    print(f"FLASH CRASH RECOVERY at step {step}: Duration {crash['duration']} periods")
+
     def calculate_performance_metrics(self, marketplace, traders, initial_budgets, 
                                   initial_stocks, trade_metrics):
         """Calculate final performance metrics"""
@@ -434,7 +483,9 @@ class Simulator:
             "flash_crashes": trade_metrics["flash_crashes"],
             "bid_ask_spreads": trade_metrics["bid_ask_spreads"],
             "hft_sell_concentration": trade_metrics["hft_sell_concentration"],
-            "lft_buy_concentration": trade_metrics["lft_buy_concentration"]
+            "lft_buy_concentration": trade_metrics["lft_buy_concentration"],
+            "shock_events": marketplace.shock_events,
+            "fundamental_value_history": trade_metrics.get("fundamental_value_history", [])
         }
         
         return performance_metrics
@@ -834,7 +885,7 @@ class Simple_Simulator(Simulator):
         performance_metrics["type"] = trader_type_performance
 
         return performance_metrics
-    
+
 if __name__ == "__main__":
     num_of_traders = 100
     # For this simulation an equal proportion of traders is picked

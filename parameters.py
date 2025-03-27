@@ -14,11 +14,19 @@ PARAMETERS = {
     "delta": 0.0001,            # Price drift parameter
     "sigma_z": 0.01,            # LF traders' price tick standard deviation
     "zeta": 1,                  # LF traders' intensity of switching
-    "gamma_L": 20,              # LF traders' resting order periods
-    "gamma_H": 1,               # HF traders' resting order periods
+    "gamma_L": 19,              # LF traders' resting order periods
+    "gamma_H": 0,               # HF traders' resting order periods
     "eta_min": 0,               # HF traders' activation threshold min
     "eta_max": 0.2,             # HF traders' activation threshold max
     "lambda": 0.625,            # Market volumes weight in HF traders' order size distribution
     "kappa_min": 0,             # HF traders' order price distribution support min
     "kappa_max": 0.01,          # HF traders' order price distribution support max
+    "randomise_HF": True,
+    "num_shocks": 0,            # Number of fundamental value shocks to apply
+    "shock_size": 0.10,         # Size of shock as fraction of current value (default 10% drop)
+    "min_shock_step": 100,      # Minimum step for first shock
+    "max_shock_step": 800,      # Maximum step for last shock
+    "continuous": False,
 }
+
+

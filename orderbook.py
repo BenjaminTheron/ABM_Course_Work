@@ -27,7 +27,7 @@ class Order:
             'orderType': self.order_type,
             'price': self.price,
             'quantity': self.quantity,
-            'time': str(self.time)
+            'time': self.time
         }
   def __lt__(self, other):
         """

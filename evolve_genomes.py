@@ -7,9 +7,11 @@ from parameters import PARAMETERS
 
 def main():
     parser = argparse.ArgumentParser(description='Run genetic evolution of market makers under varying cancellation')
-    parser.add_argument('--genome_num', type=int, default=1, help='Cance')
+    parser.add_argument('--genome_num', type=int, default=0, help='Genome number')
+    parser.add_argument('--do_all', type=int, default=1, help='Genome number')
     args = parser.parse_args()
     genome_num = args.genome_num
+    do_all = args.do_all
     output_dir = "./genome_" + str(genome_num) + "_results"
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs("./genomes", exist_ok=True)
@@ -17,43 +19,14 @@ def main():
     file_name = "genome_" + str(genome_num) + ".json"
     genome_path = os.path.join("./genomes",file_name)
 
-    if genome_num == 0:
+
+    if genome_num == 0 or do_all == 1:
+        genome_num = 0
+        file_name = "genome_" + str(genome_num) + ".json"
+        genome_path = os.path.join("./genomes",file_name)
         params = PARAMETERS.copy()
-        params["gamma_H"] = 1
 
-        # Initialize genetic algorithm
-        ga = GeneticAlgorithm(
-            params=params
-        )
-
-        best_genome = ga.run_evolution(output_dir=genetic_dir)
-
-        genome_log = {"genome_num": genome_num, "best_genome": best_genome}
-
-        with open(genome_path, 'w') as f:
-            json.dump(genome_log, f, indent=4)
-
-    if genome_num == 1:
-        params = PARAMETERS.copy()
-        params["gamma_H"] = 5
-
-        # Initialize genetic algorithm
-        ga = GeneticAlgorithm(
-            params=params
-        )
-
-        best_genome = ga.run_evolution(output_dir=genetic_dir)
-
-        genome_log = {"genome_num": genome_num, "best_genome": best_genome}
-
-        with open(genome_path, 'w') as f:
-            json.dump(genome_log, f, indent=4)
-
-    if genome_num == 2:
-        params = PARAMETERS.copy()
-        params["gamma_H"] = 10
-
-        # Initialize genetic algorithm
+        # Initialise genetic algorithm
         ga = GeneticAlgorithm(
             params=params
         )
@@ -65,7 +38,10 @@ def main():
         with open(genome_path, 'w') as f:
             json.dump(genome_log, f, indent=4)
     
-    if genome_num == 3:
+    if genome_num == 1 or do_all == 1:
+        genome_num = 1
+        file_name = "genome_" + str(genome_num) + ".json"
+        genome_path = os.path.join("./genomes",file_name)
         params = PARAMETERS.copy()
         params["NH"] = 0
 
@@ -80,6 +56,45 @@ def main():
 
         with open(genome_path, 'w') as f:
             json.dump(genome_log, f, indent=4)
+        
+
+    if genome_num == 2 or do_all == 2:
+        genome_num = 2
+        file_name = "genome_" + str(genome_num) + ".json"
+        genome_path = os.path.join("./genomes",file_name)
+        params = PARAMETERS.copy()
+
+        # Initialize genetic algorithm
+        ga = GeneticAlgorithm(
+            params=params
+        )
+
+        best_genome = ga.run_evolution(output_dir=genetic_dir)
+
+        genome_log = {"genome_num": genome_num, "best_genome": best_genome}
+
+        with open(genome_path, 'w') as f:
+            json.dump(genome_log, f, indent=4)
+
+    if genome_num == 3 or do_all == 3:
+        genome_num = 3
+        file_name = "genome_" + str(genome_num) + ".json"
+        genome_path = os.path.join("./genomes",file_name)
+        params = PARAMETERS.copy()
+
+        # Initialize genetic algorithm
+        ga = GeneticAlgorithm(
+            params=params
+        )
+
+        best_genome = ga.run_evolution(output_dir=genetic_dir)
+
+        genome_log = {"genome_num": genome_num, "best_genome": best_genome}
+
+        with open(genome_path, 'w') as f:
+            json.dump(genome_log, f, indent=4)
+    
+    
 
 
     

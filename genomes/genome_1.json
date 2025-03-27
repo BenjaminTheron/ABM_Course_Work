@@ -1,11 +1,12 @@
 {
     "genome_num": 1,
+    "genome_name": "with hft 1",
     "best_genome": {
-        "bid_spread_factor": 0.004009984667996794,
-        "ask_spread_factor": 0.01,
-        "max_inventory_limit": 459,
-        "hedge_ratio": 0.10217964146733177,
-        "order_size_multiplier": 0.03400310384776576,
-        "skew_factor": 0.0021861283077119985
+        "bid_spread_factor": 0.0002062658912870483,
+        "ask_spread_factor": 0.007575446900933008,
+        "max_inventory_limit": 706,
+        "hedge_ratio": 0.9080487724886173,
+        "order_size_multiplier": 0.01,
+        "skew_factor": 0.0019103719967237477
     }
 }

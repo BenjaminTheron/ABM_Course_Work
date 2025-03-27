@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import datetime
 from orderbook import OrderBook, Order
+import random
 
 # TODO: What is the effect of traders being able to select multiple market places?
 class MarketPlace:
@@ -9,7 +10,7 @@ class MarketPlace:
   Outlines the class for the marketplace to be used by the traders and auctioneer(s).
   """
 
-  def __init__(self, auctioneer):
+  def __init__(self, auctioneer,parameters=None):
     self.order_book = OrderBook()
     self.auctioneer = auctioneer
     self.traders = {}
@@ -18,12 +19,33 @@ class MarketPlace:
     self.spread_history = [0]
     self.hft_sell_concentration_history = [0]
     self.lft_sell_concentration_history = [0]
+    self.shock_events = []  # To track when shocks were applied
+    self.parameters = parameters
+    
+    # Initialize shock steps
+    self.shock_steps = []
+    self._generate_random_shock_steps()
 
-  def update_fundamental_value(self, delta=0.001, sigma_y=0.02):
+  def update_fundamental_value(self, delta=0.001, sigma_y=0.02,step=0):
     """Update the fundamental value according to geometric random walk"""
 
     shock = np.random.normal(0,sigma_y)
     self.fundamental_value *= (1+delta) * (1+shock)
+    if step in self.shock_steps:
+        shock_size = self.parameters.get("shock_size", 0.10)
+        pre_shock_value = self.fundamental_value
+        
+        # Apply the shock (reduce value by shock_size)
+        self.fundamental_value *= (1 - shock_size)
+        
+        # Mark the shock for visualization
+        self.shock_events.append({
+            "step": step,
+            "pre_shock_value": pre_shock_value,
+            "post_shock_value": self.fundamental_value
+        })
+        
+        print(f"Fundamental value shock at step {step}: {pre_shock_value:.2f} → {self.fundamental_value:.2f} (-{shock_size*100:.0f}%)")
   
   def process_trades(self):
     """
@@ -149,6 +171,41 @@ class MarketPlace:
   
   def add_order(self, order):
     return self.auctioneer.shout_accepting_policy(order, self.order_book)
+  
+  def _generate_random_shock_steps(self):
+    """
+    Generate random timestamps for fundamental value shocks.
+    Called during initialization.
+    """
+    num_shocks = self.parameters.get("num_shocks", 0)
+    if num_shocks <= 0:
+        return
+        
+    min_shock_step = self.parameters.get("min_shock_step", 100)
+    max_shock_step = self.parameters.get("max_shock_step", 800)
+    
+    # Create randomly spaced shock times within the range
+    shock_range = max_shock_step - min_shock_step
+    
+    if num_shocks == 1:
+        # For one shock, pick a random time in the range
+        self.shock_steps = [random.randint(min_shock_step, max_shock_step)]
+    else:
+        # For multiple shocks, divide the range into segments and pick a random time in each segment
+        segment_size = shock_range / num_shocks
+        
+        for i in range(num_shocks):
+            segment_start = min_shock_step + int(i * segment_size)
+            segment_end = min_shock_step + int((i + 1) * segment_size) - 1
+            shock_step = random.randint(segment_start, segment_end)
+            self.shock_steps.append(shock_step)
+            
+    # Sort the shock steps to ensure they're in chronological order
+    self.shock_steps.sort()
+    
+    # Print only if there are actually shocks scheduled
+    if self.shock_steps:
+        print(f"Initialized with {num_shocks} random shock(s) at steps: {self.shock_steps}")
 
   def get_fundamental_value(self):
     """Return the current fundamental value"""

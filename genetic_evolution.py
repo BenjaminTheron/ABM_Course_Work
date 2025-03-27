@@ -101,9 +101,6 @@ class GeneticAlgorithm:
         for genome in population_iter:
             # Create simulator with market maker
             simulator = Simulator(
-                iterations=1,
-                num_lf_traders=self.simulation_params.get("NL", 10000),
-                num_hf_traders=self.simulation_params.get("NH", 100),
                 parameters=self.simulation_params,
                 use_market_maker=True,
                 market_maker_params=genome

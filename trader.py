@@ -312,6 +312,9 @@ class LFTrader(Trader):
         self.frequency = self._draw_trading_frequency()
         self.next_trading_time = 0
         self.theoretical_price = 100
+        self.c_theoretical_quantity = 100
+        self.f_theoretical_quantity = 100
+
         
     
     def _draw_trading_frequency(self):
@@ -341,22 +344,19 @@ class LFTrader(Trader):
         Returns:
             Order: Generated order or None
         """
-
+        self.step = step
         last_price = marketplace.get_last_price()
         sigma_z = self.parameters.get("sigma_z", 0.01)  # LF traders' price tick standard deviation
         delta = self.parameters.get("sigma_z", 0.0001)
         self.theoretical_price = last_price * (1 + delta) * (1 + np.random.normal(0, sigma_z))
-        
-        if step < self.next_trading_time:
-            return None
-        
-        self.next_trading_time = step + self.frequency
 
         if marketplace.get_history_length() < 2 and self.strategy == "chartist":
             return
         
-        quantity = self.calculate_quantity(self.strategy, marketplace.get_price_at(-1), marketplace.get_price_at(-2), fundamental_value)
-        
+        self.f_theoretical_quantity = self.calculate_quantity("fundamentalist", marketplace.get_price_at(-1), marketplace.get_price_at(-2), fundamental_value)
+        self.c_theoretical_quantity = self.calculate_quantity("chartist", marketplace.get_price_at(-1), marketplace.get_price_at(-2), fundamental_value)
+        quantity = self.f_theoretical_quantity if self.strategy == "fundamentalist" else self.c_theoretical_quantity
+
         if quantity > 0: 
                 order_type = "bid"
         elif quantity < 0:  
@@ -365,6 +365,10 @@ class LFTrader(Trader):
             return
         
         quantity = abs(quantity)
+
+        if step < self.next_trading_time:
+            return None
+        self.next_trading_time = step + self.frequency
             
         order = Order(
             trader_id=self.trader_id,
@@ -379,22 +383,24 @@ class LFTrader(Trader):
         
         return order
     
-    def update_strategy(self, last, second_last, fundamental_value):
+    def update_strategy(self, last, second_last, fundamental_value, step=1, continuous=False):
         """
         Update strategy based on profitability as described in the paper.
         """
-        # Get parameters from instance or use defaults
-        zeta = self.parameters.get("zeta", 1)  # Intensity of switching
+        if step == self.next_trading_time or continuous:
+            # Get parameters from instance or use defaults
+            zeta = self.parameters.get("zeta", 1)  # Intensity of switching
 
-        c_profit = (last - self.theoretical_price) * self.calculate_quantity("chartist", last, second_last, fundamental_value)
-        f_profit = (last - self.theoretical_price) * self.calculate_quantity("fundamentalist", last, second_last, fundamental_value) 
-        
-        # Calculate switching probability using the logit model from the paper
-        prob_chartist = np.exp(zeta * c_profit) / (np.exp(zeta * c_profit) + np.exp(zeta * f_profit))
+            c_profit = (last - self.theoretical_price) * self.c_theoretical_quantity
+            f_profit = (last - self.theoretical_price) * self.f_theoretical_quantity
             
-        # Switch strategy based on probability
-        self.strategy = "chartist" if random.random() < prob_chartist else "fundamentalist"
-                       
+            # Calculate switching probability using the logit model from the paper
+            prob_chartist = np.exp(zeta * c_profit) / (np.exp(zeta * c_profit) + np.exp(zeta * f_profit))
+                
+            # Switch strategy based on probability
+            self.strategy = "chartist" if random.random() < prob_chartist else "fundamentalist"
+
+                    
     
     def calculate_quantity(self, strategy, last, second_last, fundamental_value):
         # Get parameters from instance or use defaults
@@ -416,7 +422,7 @@ class LFTrader(Trader):
             price_trend = last - second_last
             quantity = alpha_c * price_trend + np.random.normal(0, sigma_c)
         
-        return quantity
+        return quantity 
 
 class HFTrader(Trader):
     """
@@ -494,24 +500,30 @@ class HFTrader(Trader):
         buy_volume = sum(order.quantity for orders in order_book.bids_by_price.values() for order in orders)
         best_bid = order_book.get_best_bid()
         best_ask = order_book.get_best_ask()
+        opposite_side_volume = 0
+        test = self.availableShares
+        kappa = random.uniform(kappa_min, kappa_max)
         # Determine whether to buy or sell, ensuring it respects position limits
-        if self.availableShares < self.position_limit and sell_volume > 0 and is_buy:
+        if test < self.position_limit and sell_volume > 0 and is_buy and best_ask:
             order_type = "bid"
-            reference_price = best_ask.price if best_ask else self.find_market_price(marketplace)
-            quantity_cap = min(self.position_limit - self.availableShares, sell_volume // 4)
-        elif self.availableShares > -self.position_limit and buy_volume > 0 and not is_buy:
+            reference_price = best_ask.price * (1 + kappa)
+            quantity_cap = min(self.position_limit - test, sell_volume // 4)
+            opposite_side_volume = sell_volume
+        elif test > -self.position_limit and buy_volume > 0 and not is_buy and best_bid:
             order_type = "ask"
-            reference_price = best_bid.price if best_bid else self.find_market_price(marketplace)
-            quantity_cap = min(self.position_limit + self.availableShares, buy_volume // 4)
+            reference_price = best_bid.price * (1 - kappa)
+            quantity_cap = min(self.position_limit + test, buy_volume // 4)
+            opposite_side_volume = buy_volume
         else:
             return None
             
          # Apply small price improvement
-        kappa = random.uniform(kappa_min, kappa_max)
-        price = reference_price * (1 + kappa) if order_type == "bid" else reference_price * (1 - kappa)
+        
+        price = reference_price 
         
         # Set a valid order quantity
-        quantity =  min(int(np.random.poisson(lambda_param * 100)), quantity_cap)
+        quantity =  min(np.random.poisson(lambda_param * opposite_side_volume), quantity_cap)
+        #print(quantity)
         if quantity <= 0:
             return None
         

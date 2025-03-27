@@ -1,0 +1,13 @@
+{
+    "genome_num": 0,
+    "fitness": 15216.43,
+    "genome_name": "with hft 0",
+    "best_genome": {
+        "bid_spread_factor": 0.008927666192790385,
+        "ask_spread_factor": 0.0009737290654644956,
+        "max_inventory_limit": 754,
+        "hedge_ratio": 0.7163132049391452,
+        "order_size_multiplier": 0.10075149726428499,
+        "skew_factor": 0.00347601586251901
+    }
+}
