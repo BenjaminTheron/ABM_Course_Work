@@ -1,3 +1,6 @@
+
+
+
 PARAMETERS = {
     "MC": 1,                   # Monte Carlo replications
     "T": 1200,                  # Number of trading sessions

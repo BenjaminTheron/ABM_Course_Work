@@ -1,5 +1,6 @@
 {
     "genome_num": 1,
+    "fitness": 40385.32,
     "genome_name": "with hft 1",
     "best_genome": {
         "bid_spread_factor": 0.0002062658912870483,
